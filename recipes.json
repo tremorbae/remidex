@@ -1,0 +1,1065 @@
+{
+ "source": "Community-discovered recipes (beetle.wiki, BeetleBoy Advance). Remilia doesn't publish recipes, and they can change.",
+ "groups": {
+  "junk": {
+   "label": "Any Loose Junk",
+   "tier": 1,
+   "match": {
+    "category": 3,
+    "exclude": [
+     "junk_cube_t1",
+     "junk_cube_t2"
+    ]
+   }
+  },
+  "pollen": {
+   "label": "Any Pollen",
+   "tier": 2,
+   "keys": [
+    "pollen_common",
+    "pollen_uncommon",
+    "pollen_rare",
+    "pollen_super_rare"
+   ]
+  },
+  "beetle": {
+   "label": "Any Beetle",
+   "tier": 2,
+   "match": {
+    "category": 2
+   }
+  },
+  "d20_or_deck": {
+   "label": "D20 or Deck of Cards",
+   "tier": 7,
+   "keys": [
+    "d20",
+    "deck_of_cards"
+   ]
+  },
+  "beetle_2": {
+   "label": "Any Tin Beetle",
+   "tier": 2,
+   "keys": [
+    "green"
+   ]
+  },
+  "beetle_3": {
+   "label": "Any Bronze Beetle",
+   "tier": 3,
+   "keys": [
+    "ladybug",
+    "purple"
+   ]
+  },
+  "beetle_4": {
+   "label": "Any Mithril Beetle",
+   "tier": 4,
+   "keys": [
+    "pond",
+    "monarch"
+   ]
+  },
+  "beetle_5": {
+   "label": "Any Adamantine Beetle",
+   "tier": 5,
+   "keys": [
+    "goliath",
+    "stag",
+    "bombardier"
+   ]
+  },
+  "beetle_6": {
+   "label": "Any Diamond Beetle",
+   "tier": 6,
+   "keys": [
+    "golden",
+    "mars_rhino"
+   ]
+  },
+  "flower_2": {
+   "label": "Any Tin Flower",
+   "tier": 2,
+   "match": {
+    "category": 5,
+    "tier": 2,
+    "exclude_prefix": "pollen"
+   }
+  },
+  "flower_3": {
+   "label": "Any Bronze Flower",
+   "tier": 3,
+   "match": {
+    "category": 5,
+    "tier": 3,
+    "exclude_prefix": "pollen"
+   }
+  },
+  "flower_4": {
+   "label": "Any Mithril Flower",
+   "tier": 4,
+   "match": {
+    "category": 5,
+    "tier": 4,
+    "exclude_prefix": "pollen"
+   }
+  },
+  "flower_5": {
+   "label": "Any Adamantine Flower",
+   "tier": 5,
+   "match": {
+    "category": 5,
+    "tier": 5,
+    "exclude_prefix": "pollen"
+   }
+  },
+  "flower_6": {
+   "label": "Any Diamond Flower",
+   "tier": 6,
+   "match": {
+    "category": 5,
+    "tier": 6,
+    "exclude_prefix": "pollen"
+   }
+  }
+ },
+ "recipes": [
+  {
+   "mode": "assemble",
+   "in": [
+    "@junk",
+    "@junk"
+   ],
+   "out": [
+    "junk_cube_t1"
+   ],
+   "note": "Any two pieces, matching or not."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t1",
+    "junk_cube_t1",
+    "junk_cube_t1"
+   ],
+   "out": [
+    "junk_cube_t2"
+   ],
+   "note": "Needs crafting slot 3."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "junk_cube_t2"
+   ],
+   "out": [
+    "junk_cube_t2",
+    "specimen_pin",
+    "gallic_rose"
+   ],
+   "note": "A gamble: usually a Junk Tesseract back, sometimes something better.",
+   "pick": true,
+   "gamble": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t1",
+    "junk_cube_t1"
+   ],
+   "out": [
+    "hammer_t1"
+   ],
+   "note": "You can own one hammer of each tier."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "hammer_t1",
+    "junk_cube_t2",
+    "pollen_common"
+   ],
+   "out": [
+    "hammer_t2"
+   ],
+   "note": "Upgrading resets the hammer's break chance. Needs slot 3."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "@flower_2",
+    "@flower_2"
+   ],
+   "out": [
+    "pollen_common"
+   ],
+   "note": "Any two flowers of this tier, even different ones."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "@flower_2"
+   ],
+   "out": [
+    "@flower_2"
+   ],
+   "note": "Rerolls the flower into a random one of the same tier."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "hammer_t2",
+    "junk_cube_t2",
+    "pollen_uncommon"
+   ],
+   "out": [
+    "hammer_t3"
+   ],
+   "note": "Upgrading resets the hammer's break chance. Needs slot 3."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "@flower_3",
+    "@flower_3"
+   ],
+   "out": [
+    "pollen_uncommon"
+   ],
+   "note": "Any two flowers of this tier, even different ones."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "@flower_3"
+   ],
+   "out": [
+    "@flower_3"
+   ],
+   "note": "Rerolls the flower into a random one of the same tier."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "hammer_t3",
+    "junk_cube_t2",
+    "pollen_rare"
+   ],
+   "out": [
+    "hammer_t4"
+   ],
+   "note": "Upgrading resets the hammer's break chance. Needs slot 3."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "@flower_4",
+    "@flower_4"
+   ],
+   "out": [
+    "pollen_rare"
+   ],
+   "note": "Any two flowers of this tier, even different ones."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "@flower_4"
+   ],
+   "out": [
+    "@flower_4"
+   ],
+   "note": "Rerolls the flower into a random one of the same tier."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "hammer_t4",
+    "junk_cube_t2",
+    "pollen_super_rare"
+   ],
+   "out": [
+    "hammer_t5"
+   ],
+   "note": "Upgrading resets the hammer's break chance. Needs slot 3."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "@flower_5",
+    "@flower_5"
+   ],
+   "out": [
+    "pollen_super_rare"
+   ],
+   "note": "Any two flowers of this tier, even different ones."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "@flower_5"
+   ],
+   "out": [
+    "@flower_5"
+   ],
+   "note": "Rerolls the flower into a random one of the same tier."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "@flower_3",
+    "junk_cube_t1"
+   ],
+   "out": [
+    "beetleboy_key"
+   ],
+   "note": "Drop the key on the padlock to unlock crafting slot 3 for good."
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t1",
+    "junk_cube_t1",
+    "pollen_common"
+   ],
+   "out": [
+    "trophy_chinese_coin",
+    "chinese_coin"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "junk_cube_t2",
+    "pollen_common"
+   ],
+   "out": [
+    "trophy_prism",
+    "prism"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "junk_cube_t2",
+    "pollen_uncommon"
+   ],
+   "out": [
+    "trophy_roman_dodeca",
+    "roman_dodeca"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "junk_cube_t2",
+    "pollen_rare"
+   ],
+   "out": [
+    "trophy_arrowhead",
+    "arrowhead"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "junk_cube_t2",
+    "junk_cube_t2",
+    "pollen_super_rare"
+   ],
+   "out": [
+    "trophy_titanium_cube",
+    "titanium_cube"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "chinese_coin",
+    "@pollen"
+   ],
+   "out": [
+    "trophy_oriental_fan",
+    "oriental_fan"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "chinese_coin",
+    "roman_dodeca"
+   ],
+   "out": [
+    "trophy_jade_cabbage",
+    "jade_cabbage"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "roman_dodeca",
+    "prism"
+   ],
+   "out": [
+    "trophy_thumb_drive",
+    "thumb_drive"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "roman_dodeca",
+    "titanium_cube"
+   ],
+   "out": [
+    "trophy_mokia",
+    "mokia"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "roman_dodeca",
+    "arrowhead"
+   ],
+   "out": [
+    "trophy_compass",
+    "compass"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "prism",
+    "titanium_cube"
+   ],
+   "out": [
+    "trophy_juex_card",
+    "juex_card"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "arrowhead",
+    "titanium_cube"
+   ],
+   "out": [
+    "trophy_police_badge",
+    "police_badge"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "chinese_coin",
+    "juex_card"
+   ],
+   "out": [
+    "trophy_cult_medallion",
+    "cult_medallion"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "oriental_fan",
+    "jade_cabbage"
+   ],
+   "out": [
+    "trophy_stradivarius",
+    "stradivarius"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "arrowhead",
+    "stradivarius"
+   ],
+   "out": [
+    "trophy_goya_miniature",
+    "goya_miniature"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "arrowhead",
+    "cult_medallion"
+   ],
+   "out": [
+    "trophy_milady_fumoku",
+    "milady_fumoku"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "juex_card",
+    "milady_fumoku"
+   ],
+   "out": [
+    "trophy_remilianet_id",
+    "remilianet_id"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "assemble",
+   "in": [
+    "@d20_or_deck",
+    "thumb_drive"
+   ],
+   "out": [
+    "trophy_joystick",
+    "joystick"
+   ],
+   "note": "The first success gives the trophy for your shelf; later ones give the trinket.",
+   "pick": true,
+   "first_trophy": true
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_2",
+    "junk_cube_t1"
+   ],
+   "out": [
+    "@flower_2"
+   ],
+   "note": "Gives a random flower of the beetle's tier. Only works one way."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_3",
+    "junk_cube_t1"
+   ],
+   "out": [
+    "@flower_3"
+   ],
+   "note": "Gives a random flower of the beetle's tier. Only works one way."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_4",
+    "junk_cube_t1"
+   ],
+   "out": [
+    "@flower_4"
+   ],
+   "note": "Gives a random flower of the beetle's tier. Only works one way."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_5",
+    "junk_cube_t1"
+   ],
+   "out": [
+    "@flower_5"
+   ],
+   "note": "Gives a random flower of the beetle's tier. Only works one way."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_2",
+    "@beetle_2"
+   ],
+   "out": [
+    "@beetle_3"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@flower_2",
+    "@flower_2"
+   ],
+   "out": [
+    "@flower_3"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_3",
+    "@beetle_3"
+   ],
+   "out": [
+    "@beetle_4"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@flower_3",
+    "@flower_3"
+   ],
+   "out": [
+    "@flower_4"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_4",
+    "@beetle_4"
+   ],
+   "out": [
+    "@beetle_5"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@flower_4",
+    "@flower_4"
+   ],
+   "out": [
+    "@flower_5"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_5",
+    "@beetle_5"
+   ],
+   "out": [
+    "@beetle_6"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@flower_5",
+    "@flower_5"
+   ],
+   "out": [
+    "@flower_6"
+   ],
+   "note": "Low odds, and hard on hammers."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_3",
+    "pollen_uncommon"
+   ],
+   "out": [
+    "nectar",
+    "cattail"
+   ],
+   "note": "Random: one or the other.",
+   "pick": true
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "@beetle_4",
+    "pollen_rare"
+   ],
+   "out": [
+    "pinecone",
+    "moss",
+    "gunpowder"
+   ],
+   "note": "Random: one of the three.",
+   "pick": true
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "nectar",
+    "ladybug"
+   ],
+   "out": [
+    "monarch"
+   ],
+   "note": "A Purple Beetle works in place of the Ladybug."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "cattail",
+    "ladybug"
+   ],
+   "out": [
+    "pond"
+   ]
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "pinecone",
+    "pond"
+   ],
+   "out": [
+    "goliath"
+   ]
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "moss",
+    "pond"
+   ],
+   "out": [
+    "stag"
+   ]
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "gunpowder",
+    "pond"
+   ],
+   "out": [
+    "bombardier"
+   ],
+   "note": "A Monarch also works."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "gunpowder",
+    "moss",
+    "pinecone"
+   ],
+   "out": [
+    "black_lotus"
+   ],
+   "note": "The only Diamond Flower. Needs slot 3."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "royal_poinciana",
+    "@beetle_4"
+   ],
+   "out": [
+    "giraffe_weevil"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "camellia",
+    "@beetle_4"
+   ],
+   "out": [
+    "pillbug"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "morning_glory",
+    "@beetle_4"
+   ],
+   "out": [
+    "imperial_tortoise"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "larkspur",
+    "@beetle_4"
+   ],
+   "out": [
+    "golden_tiger"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "fringed_iris",
+    "@beetle_4"
+   ],
+   "out": [
+    "blue_longicorn"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "pincushion",
+    "@beetle_5"
+   ],
+   "out": [
+    "sabertooth_longhorn"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "gazania",
+    "@beetle_5"
+   ],
+   "out": [
+    "sunset_moth"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "passionflower",
+    "@beetle_5"
+   ],
+   "out": [
+    "death_feigning"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "hellebore",
+    "@beetle_5"
+   ],
+   "out": [
+    "pondhawk"
+   ],
+   "note": "A guaranteed species on success. Players use a Purple sacrifice here."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "black_lotus",
+    "sabertooth_longhorn",
+    "sunset_moth"
+   ],
+   "out": [
+    "mars_rhino"
+   ],
+   "note": "The crafting endgame. Needs slot 3."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "specimen_pin",
+    "@beetle"
+   ],
+   "out": [
+    "trophy_green"
+   ],
+   "note": "Pins that beetle as a trophy for your shelf (shown here with a Green Beetle)."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "cucumber",
+    "pollen_uncommon"
+   ],
+   "out": [
+    "nectar",
+    "cattail"
+   ],
+   "note": "Untested: the Striped Cucumber Beetle in place of a Ladybug or Purple Beetle. It's newer than the recipe book, and beetle.wiki says it can't be turned into a flower, so it may not count. If the game says NOTHING HAPPENED, only this recipe goes.",
+   "pick": true
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "nectar",
+    "purple"
+   ],
+   "out": [
+    "monarch"
+   ],
+   "note": "From beetle.wiki's beetle list (Nectar + Ladybug or Purple Beetle)."
+  },
+  {
+   "mode": "smash",
+   "in": [
+    "gunpowder",
+    "monarch"
+   ],
+   "out": [
+    "bombardier"
+   ],
+   "note": "From beetle.wiki's beetle list (Gunpowder + Pond Beetle or Monarch)."
+  }
+ ],
+ "extra": {
+  "green": {
+   "source": "The free claim or a hunt. The commonest catch.",
+   "uses": [
+    "A sacrifice for every smash (Green or Purple only)."
+   ]
+  },
+  "purple": {
+   "source": "The free claim or a hunt.",
+   "uses": [
+    "A sacrifice for every smash (Green or Purple only). Players think Purples raise the odds."
+   ]
+  },
+  "ladybug": {
+   "source": "The free claim or a hunt."
+  },
+  "cucumber": {
+   "source": "The free claim or a hunt.",
+   "uses": [
+    "Can stand in for a Ladybug in some Bronze smashes. Can't be turned into a flower."
+   ]
+  },
+  "bumblebee": {
+   "source": "Hunts only. No known recipe."
+  },
+  "christmas": {
+   "source": "Catch only, during the December holiday event."
+  },
+  "candycane_tiger_moth": {
+   "source": "Catch only, during the December holiday event."
+  },
+  "skull": {
+   "source": "Catch only, during the Halloween event."
+  },
+  "widow": {
+   "source": "Catch only, during the Halloween event."
+  },
+  "golden": {
+   "source": "An ultra-rare drop, or a Diamond tier-up smash.",
+   "uses": [
+    "Can't be turned back into a flower."
+   ]
+  },
+  "cheese": {
+   "source": "The daily cheese claim (Universal Basic Cheese).",
+   "uses": [
+    "Pays for hunts: 20 cheese each."
+   ]
+  },
+  "specimen_pin": {
+   "source": "Everyone got one free in v0.7; since then a rare hunt drop."
+  },
+  "d20": {
+   "source": "A rare hunt drop."
+  },
+  "deck_of_cards": {
+   "source": "A rare hunt drop."
+  },
+  "engraved_lighter": {
+   "source": "The recipe is unknown (players call it gatekept)."
+  },
+  "trophy_engraved_lighter": {
+   "source": "The recipe is unknown."
+  },
+  "beetleboy_key": {
+   "uses": [
+    "Unlocks crafting slot 3, in both modes, for good."
+   ]
+  },
+  "junk_cube_t1": {
+   "source": "Assemble any two pieces of loose junk."
+  },
+  "@junk": {
+   "source": "Hunts, the free claim, and the Cheeseman (once a day)."
+  },
+  "@flower": {
+   "source": "Hunt drops, or smash a beetle of the same tier with a Junk Cube."
+  },
+  "hammer_t1": {
+   "uses": [
+    "Needed to smash. Crafting bonus +0%, base break chance 10%. Its break chance resets at the daily cheese reset."
+   ]
+  },
+  "hammer_t2": {
+   "uses": [
+    "Needed to smash. Crafting bonus +5%, base break chance 5%. Its break chance resets at the daily cheese reset."
+   ]
+  },
+  "hammer_t3": {
+   "uses": [
+    "Needed to smash. Crafting bonus +20%, base break chance 10%. Its break chance resets at the daily cheese reset."
+   ]
+  },
+  "hammer_t4": {
+   "uses": [
+    "Needed to smash. Crafting bonus +35%, base break chance 2%. Its break chance resets at the daily cheese reset."
+   ]
+  },
+  "hammer_t5": {
+   "uses": [
+    "Needed to smash. Crafting bonus +90%, base break chance 1%. Its break chance resets at the daily cheese reset."
+   ]
+  }
+ }
+}

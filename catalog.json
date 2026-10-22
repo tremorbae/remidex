@@ -1,0 +1,1373 @@
+{
+ "source": "BeetleBoy Advance (github.com/sneedragon/beetleboy-advance) and beetle.wiki; names and tiers the game reports win over these; card art from BeetleBoy Advance, card scenes from wiki.remilia.org",
+ "items": {
+  "cheese": {
+   "name": "Cheese",
+   "category": 1,
+   "tier": 2,
+   "art": "icons/cheese/cheese.png",
+   "desc": "Cheddar variety",
+   "latin": "Caseus deliciosus",
+   "card": "icons/_card/cheese.webp",
+   "card_bg": "icons/_bg/cheese.webp"
+  },
+  "widow": {
+   "name": "Black Widow",
+   "category": 2,
+   "tier": 6,
+   "art": "icons/beetles/widow.png",
+   "desc": "Southern Black Widow",
+   "latin": "Latrodectus mactans",
+   "season": "Halloween",
+   "card": "icons/_card/widow.webp",
+   "card_bg": "icons/_bg/widow.webp"
+  },
+  "candycane_tiger_moth": {
+   "name": "Candycane Tiger Moth",
+   "category": 2,
+   "tier": 6,
+   "art": "icons/beetles/candycane_tiger_moth.png",
+   "desc": "New Hope tiger moth",
+   "latin": "Spilosoma congrua",
+   "season": "December",
+   "card": "icons/_card/candycane_tiger_moth.webp"
+  },
+  "golden": {
+   "name": "Golden Scarab",
+   "category": 2,
+   "tier": 6,
+   "art": "icons/beetles/golden.png",
+   "desc": "Jewel scarab",
+   "latin": "Chrysina resplendens",
+   "card": "icons/_card/golden.webp",
+   "card_bg": "icons/_bg/golden.webp",
+   "bg": "https://wiki.remilia.org/images/5/54/Beetleboy_Golden_Background.webp"
+  },
+  "mars_rhino": {
+   "name": "Mars Rhino Beetle",
+   "category": 2,
+   "tier": 6,
+   "art": "icons/beetles/mars_rhino.png",
+   "desc": "Mars rhino beetle",
+   "latin": "Megasoma mars",
+   "card": "icons/_card/mars_rhino.webp"
+  },
+  "death_feigning": {
+   "name": "Blue Death Feigning Beetle",
+   "category": 2,
+   "tier": 5,
+   "art": "icons/beetles/death_feigning.png",
+   "desc": "Blue death-feigning beetle",
+   "latin": "Asbolus verrucosus",
+   "card": "icons/_card/death_feigning.webp",
+   "card_bg": "icons/_bg/death_feigning.webp"
+  },
+  "bombardier": {
+   "name": "Bombardier Beetle",
+   "category": 2,
+   "tier": 5,
+   "art": "icons/beetles/bombardier.png",
+   "desc": "Bombardier beetle",
+   "latin": "Brachinus explodens",
+   "card": "icons/_card/bombardier.webp",
+   "card_bg": "icons/_bg/bombardier.webp"
+  },
+  "pondhawk": {
+   "name": "Eastern Pondhawk",
+   "category": 2,
+   "tier": 5,
+   "art": "icons/beetles/pondhawk.png",
+   "desc": "Eastern pondhawk",
+   "latin": "Erythemis simplicicollis",
+   "card": "icons/_card/pondhawk.webp",
+   "card_bg": "icons/_bg/pondhawk.webp"
+  },
+  "goliath": {
+   "name": "Goliath Beetle",
+   "category": 2,
+   "tier": 5,
+   "art": "icons/beetles/goliath.png",
+   "desc": "Goliath beetle",
+   "latin": "Goliathus goliatus",
+   "card": "icons/_card/goliath.webp",
+   "card_bg": "icons/_bg/goliath.webp"
+  },
+  "sabertooth_longhorn": {
+   "name": "Sabertooth Longhorn Beetle",
+   "category": 2,
+   "tier": 5,
+   "art": "icons/beetles/sabertooth_longhorn.png",
+   "desc": "Sabertooth longhorn beetle",
+   "latin": "Macrodontia cervicornis",
+   "card": "icons/_card/sabertooth_longhorn.webp",
+   "card_bg": "icons/_bg/sabertooth_longhorn.webp",
+   "bg": "https://wiki.remilia.org/images/9/94/Beetleboy_Sabertooth_Longhorn_Background.webp"
+  },
+  "stag": {
+   "name": "Stag Beetle",
+   "category": 2,
+   "tier": 5,
+   "art": "icons/beetles/stag.png",
+   "desc": "Japanese great stag beetle",
+   "latin": "Dorcus hopei binodulosus",
+   "card": "icons/_card/stag.webp",
+   "card_bg": "icons/_bg/stag.webp",
+   "bg": "https://wiki.remilia.org/images/d/d1/Beetleboy_Stag_Background.webp"
+  },
+  "sunset_moth": {
+   "name": "Sunset Moth",
+   "category": 2,
+   "tier": 5,
+   "art": "icons/beetles/sunset_moth.png",
+   "desc": "Madagascan sunset moth",
+   "latin": "Chrysiridia rhipheus",
+   "card": "icons/_card/sunset_moth.webp",
+   "card_bg": "icons/_bg/sunset_moth.webp",
+   "bg": "https://wiki.remilia.org/images/d/d3/Beetleboy_Sunset_Moth_Background.webp"
+  },
+  "blue_longicorn": {
+   "name": "Blue Longicorn Beetle",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/blue_longicorn.png",
+   "desc": "Black-spotted blue longicorn",
+   "latin": "Rosalia batesi",
+   "card": "icons/_card/blue_longicorn.webp",
+   "card_bg": "icons/_bg/blue_longicorn.webp"
+  },
+  "bumblebee": {
+   "name": "Bumble Bee",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/bumblebee.png",
+   "desc": "Buff-tailed bumblebee",
+   "latin": "Bombus terrestris",
+   "card": "icons/_card/bumblebee.webp",
+   "card_bg": "icons/_bg/bumblebee.webp"
+  },
+  "christmas": {
+   "name": "Christmas Beetle",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/christmas.png",
+   "desc": "Spotted flower beetle",
+   "latin": "Stephanorrhina guttata",
+   "season": "December",
+   "card": "icons/_card/christmas.webp",
+   "card_bg": "icons/_bg/christmas.webp",
+   "bg": "https://wiki.remilia.org/images/f/f9/Beetleboy_Christmas_Background.webp"
+  },
+  "giraffe_weevil": {
+   "name": "Giraffe Weevil",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/giraffe_weevil.png",
+   "desc": "Giraffe weevil",
+   "latin": "Trachelophorus giraffa",
+   "card": "icons/_card/giraffe_weevil.webp",
+   "card_bg": "icons/_bg/giraffe_weevil.webp",
+   "bg": "https://wiki.remilia.org/images/7/72/Beetleboy_Giraffe_Weevil_Background.webp"
+  },
+  "golden_tiger": {
+   "name": "Golden-Spotted Tiger Beetle",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/golden_tiger.png",
+   "desc": "Golden-spotted tiger beetle",
+   "latin": "Cicindela aurulenta",
+   "card": "icons/_card/golden_tiger.webp",
+   "card_bg": "icons/_bg/golden_tiger.webp"
+  },
+  "imperial_tortoise": {
+   "name": "Imperial Tortoise Beetle",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/imperial_tortoise.png",
+   "desc": "Imperial tortoise beetle",
+   "latin": "Stolas imperialis",
+   "card": "icons/_card/imperial_tortoise.webp",
+   "card_bg": "icons/_bg/imperial_tortoise.webp"
+  },
+  "monarch": {
+   "name": "Monarch",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/monarch.png",
+   "desc": "Monarch",
+   "latin": "Danaus plexippus",
+   "card": "icons/_card/monarch.webp",
+   "card_bg": "icons/_bg/monarch.webp",
+   "bg": "https://wiki.remilia.org/images/1/11/Beetleboy_Monarch_Background.webp"
+  },
+  "pillbug": {
+   "name": "Pillbug",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/pillbug.png",
+   "desc": "Beautiful pill woodlouse",
+   "latin": "Armadillidium pulchellum",
+   "card": "icons/_card/pillbug.webp",
+   "card_bg": "icons/_bg/pillbug.webp",
+   "bg": "https://wiki.remilia.org/images/0/0f/Beetleboy_Pillbug_Background.webp"
+  },
+  "pond": {
+   "name": "Pond Beetle",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/pond.png",
+   "desc": "Lesser silver water beetle",
+   "latin": "Hydrochara caraboides",
+   "card": "icons/_card/pond.webp",
+   "card_bg": "icons/_bg/pond.webp",
+   "bg": "https://wiki.remilia.org/images/3/35/Beetleboy_Pond_Background.webp"
+  },
+  "skull": {
+   "name": "Skull Bug",
+   "category": 2,
+   "tier": 4,
+   "art": "icons/beetles/skull.png",
+   "desc": "Death head bug",
+   "latin": "Eucorysses grandis",
+   "season": "Halloween",
+   "card": "icons/_card/skull.webp",
+   "bg": "https://wiki.remilia.org/images/d/d0/Beetleboy_Skull_Background.webp"
+  },
+  "ladybug": {
+   "name": "Ladybug",
+   "category": 2,
+   "tier": 3,
+   "art": "icons/beetles/ladybug.png",
+   "desc": "Common ladybug",
+   "latin": "Coccinella septempunctata",
+   "card": "icons/_card/ladybug.webp",
+   "card_bg": "icons/_bg/ladybug.webp",
+   "bg": "https://wiki.remilia.org/images/9/93/Beetleboy_Ladybug_Background.webp"
+  },
+  "purple": {
+   "name": "Purple Beetle",
+   "category": 2,
+   "tier": 3,
+   "art": "icons/beetles/purple.png",
+   "desc": "Violet leaf beetle",
+   "latin": "Chrysolina sturmi",
+   "card": "icons/_card/purple.webp",
+   "card_bg": "icons/_bg/purple.webp",
+   "bg": "https://wiki.remilia.org/images/7/73/Beetleboy_Purple_Background.webp"
+  },
+  "cucumber": {
+   "name": "Striped Cucumber Beetle",
+   "category": 2,
+   "tier": 3,
+   "art": "icons/beetles/cucumber.png",
+   "desc": "Striped cucumber beetle",
+   "latin": "Acalymma vittatum",
+   "card": "icons/_card/cucumber.webp",
+   "card_bg": "icons/_bg/cucumber.webp"
+  },
+  "green": {
+   "name": "Green Beetle",
+   "category": 2,
+   "tier": 2,
+   "art": "icons/beetles/green.png",
+   "desc": "Tansy beetle",
+   "latin": "Chrysolina graminis",
+   "card": "icons/_card/green.webp",
+   "card_bg": "icons/_bg/green.webp",
+   "bg": "https://wiki.remilia.org/images/d/d0/Beetleboy_Green_Background.webp"
+  },
+  "ballpoint_pen": {
+   "name": "Disassembled Ballpoint Pen",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/ballpoint_pen.png",
+   "desc": "Amazing technology",
+   "latin": "Calamus deconstructus",
+   "card": "icons/_card/ballpoint_pen.webp"
+  },
+  "bendy_straw": {
+   "name": "Bendy Straw",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/bendy_straw.png",
+   "desc": "When the drinks are silly",
+   "latin": "Tubulus flexibilis",
+   "card": "icons/_card/bendy_straw.webp"
+  },
+  "bike_reflector": {
+   "name": "Broken Bike Reflector",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/bike_reflector.png",
+   "desc": "Safety red",
+   "latin": "Speculatus velocipedus",
+   "card": "icons/_card_junk/bike_reflector.webp"
+  },
+  "bottle_cap": {
+   "name": "Bottle Cap",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/bottle_cap.png",
+   "desc": "Not a currency yet",
+   "latin": "Operculum metallicum",
+   "card": "icons/_card_junk/bottle_cap.webp"
+  },
+  "broken_firework": {
+   "name": "Broken Firework",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/broken_firework.png",
+   "desc": "Boom",
+   "latin": "Pyrotechnicus fractus",
+   "card": "icons/_card/broken_firework.webp"
+  },
+  "button": {
+   "name": "Button",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/button.png",
+   "desc": "Nothing happened",
+   "latin": "Buttonis quadriforis",
+   "card": "icons/_card/button.webp"
+  },
+  "chip_bag": {
+   "name": "Chip Bag",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/chip_bag.png",
+   "desc": "Mostly air",
+   "latin": "Sacculus crepitus",
+   "card": "icons/_card_junk/chip_bag.webp"
+  },
+  "chocolate_bar": {
+   "name": "Chocolate Bar",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/chocolate_bar.png",
+   "desc": "Slightly melted",
+   "latin": "Barra dulcis",
+   "card": "icons/_card_junk/chocolate_bar.webp"
+  },
+  "chocolate_wrapper": {
+   "name": "Chocolate Wrapper",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/chocolate_wrapper.png",
+   "desc": "Still good.",
+   "latin": "Tegmen chocolatus",
+   "card": "icons/_card_junk/chocolate_wrapper.webp"
+  },
+  "cigarette_butt": {
+   "name": "Cigarette Butt",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/cigarette_butt.png",
+   "desc": "The cure.",
+   "latin": "Fumigatus relictus",
+   "card": "icons/_card_junk/cigarette_butt.webp"
+  },
+  "coffee_can": {
+   "name": "Coffee Can",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/coffee_can.png",
+   "desc": "SUPER busy.",
+   "latin": "Cylindrus caffeinatus",
+   "card": "icons/_card_junk/coffee_can.webp"
+  },
+  "cracker_wrapper": {
+   "name": "Cracker Wrapper",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/cracker_wrapper.png",
+   "desc": "Oh crumbs",
+   "latin": "Involucrum biscuitus",
+   "card": "icons/_card_junk/cracker_wrapper.webp"
+  },
+  "deodorant_can": {
+   "name": "Deodorant Can",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/deodorant_can.png",
+   "desc": "Convention special",
+   "latin": "Cylindrus fragrantius",
+   "card": "icons/_card/deodorant_can.webp"
+  },
+  "empty_noodle_cup": {
+   "name": "Empty Noodle Cup",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/empty_noodle_cup.png",
+   "desc": "Delicious styrofoam",
+   "latin": "Ramenus vacuus",
+   "card": "icons/_card_junk/empty_noodle_cup.webp"
+  },
+  "glue_stick": {
+   "name": "Glue Stick",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/glue_stick.png",
+   "desc": "Sticks to you",
+   "latin": "Glutinus solidus",
+   "card": "icons/_card/glue_stick.webp"
+  },
+  "green_army_man": {
+   "name": "Green Army Man",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/green_army_man.png",
+   "desc": "OOORAAHH",
+   "latin": "Militus plasticus",
+   "card": "icons/_card_junk/green_army_man.webp"
+  },
+  "gum_wrapper": {
+   "name": "Gum Wrapper",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/gum_wrapper.png",
+   "desc": "Tattoos not included",
+   "latin": "Involucrum masticatus",
+   "card": "icons/_card_junk/gum_wrapper.webp"
+  },
+  "origami_crane": {
+   "name": "Origami Crane",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/origami_crane.png",
+   "desc": "He will kill again.",
+   "latin": "Grus chartaceus",
+   "card": "icons/_card/origami_crane.webp"
+  },
+  "grenade_pin": {
+   "name": "Grenade Pin",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/grenade_pin.png",
+   "desc": "Instagibbed",
+   "latin": "Anulus detonatus",
+   "card": "icons/_card/grenade_pin.webp"
+  },
+  "guitar_pick": {
+   "name": "Guitar Pick",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/guitar_pick.png",
+   "desc": "It's marbled",
+   "latin": "Plectrum melodius",
+   "card": "icons/_card/guitar_pick.webp"
+  },
+  "jack_adapter": {
+   "name": "Phone Jack Adapter",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/jack_adapter.png",
+   "desc": "A relic of the early 21st century",
+   "latin": "Adaptorus audius",
+   "card": "icons/_card_junk/jack_adapter.webp"
+  },
+  "juicebox": {
+   "name": "Juice Box",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/juicebox.png",
+   "desc": "Beetlejuice signature flavor",
+   "latin": "Cartonus succulentus",
+   "card": "icons/_card_junk/juicebox.webp"
+  },
+  "junk_cube_t1": {
+   "name": "Junk Cube",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/junk_cube_t1.png",
+   "desc": "Encapsulated detritus",
+   "latin": "Cubus junketii",
+   "card": "icons/_card_junk/junk_cube_t1.webp"
+  },
+  "junk_cube_t2": {
+   "name": "Junk Tesseract",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/junk_cube_t2.png",
+   "desc": "Greater than the sum of its parts",
+   "latin": "Cubus junketii major",
+   "card": "icons/_card_junk/junk_cube_t2.webp"
+  },
+  "marble": {
+   "name": "Marble",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/marble.png",
+   "desc": "Faded swirl",
+   "latin": "Sphericus vitreus",
+   "card": "icons/_card_junk/marble.webp"
+  },
+  "matchbook": {
+   "name": "Matchbook",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/matchbook.png",
+   "desc": "Listen here, kid",
+   "latin": "Ignifer libellus",
+   "card": "icons/_card/matchbook.webp"
+  },
+  "event_band": {
+   "name": "Event Band",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/event_band.png",
+   "desc": "NEVER taking this off",
+   "latin": "Fascia festivalis",
+   "card": "icons/_card/event_band.webp"
+  },
+  "paperclip": {
+   "name": "Paperclip",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/paperclip.png",
+   "desc": "Standard silver",
+   "latin": "Ferrum clipsius",
+   "card": "icons/_card_junk/paperclip.webp"
+  },
+  "pebble": {
+   "name": "Pebble",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/pebble.png",
+   "desc": "An interesting shade of blue…",
+   "latin": "Petrus minimus",
+   "card": "icons/_card_junk/pebble.webp"
+  },
+  "pill_bottle": {
+   "name": "Empty Pill Bottle",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/pill_bottle.png",
+   "desc": "Pills here",
+   "latin": "Vasculum pharmacius",
+   "card": "icons/_card/pill_bottle.webp"
+  },
+  "pokkiri_box": {
+   "name": "Pokkiri Box",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/pokkiri_box.png",
+   "desc": "Crispy biscuit sticks",
+   "latin": "Biscuitus japonicus",
+   "card": "icons/_card_junk/pokkiri_box.webp"
+  },
+  "ramune_bottle": {
+   "name": "Empty Ramune Bottle",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/ramune_bottle.png",
+   "desc": "Comes with free marble",
+   "latin": "Vitrum marmoratus",
+   "card": "icons/_card_junk/ramune_bottle.webp"
+  },
+  "red_whistle": {
+   "name": "Red Whistle",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/red_whistle.png",
+   "desc": "Universal frequency",
+   "latin": "Fistula rubra",
+   "card": "icons/_card_junk/red_whistle.webp"
+  },
+  "rubber_band": {
+   "name": "Rubber Band",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/rubber_band.png",
+   "desc": "Bully grade",
+   "latin": "Elasticus circularis",
+   "card": "icons/_card_junk/rubber_band.webp"
+  },
+  "salt_pepper_packet": {
+   "name": "Salt N Pepper Packet",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/salt_pepper_packet.png",
+   "desc": "Seasoning for the civilized",
+   "latin": "Condimentum portabile",
+   "card": "icons/_card/salt_pepper_packet.webp"
+  },
+  "scratch_off": {
+   "name": "Scratch Off Ticket",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/scratch_off.png",
+   "desc": "Non-winning",
+   "latin": "Fortuna rasilis",
+   "card": "icons/_card_junk/scratch_off.webp"
+  },
+  "sim_card": {
+   "name": "SIM Card",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/sim_card.png",
+   "desc": "Call me",
+   "latin": "Charta identitatis",
+   "card": "icons/_card/sim_card.webp"
+  },
+  "smiley_pebble": {
+   "name": "Smiley Pebble",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/smiley_pebble.png",
+   "desc": "hi",
+   "latin": "Petrus felix",
+   "card": "icons/_card_junk/smiley_pebble.webp"
+  },
+  "soda_can_tab": {
+   "name": "Soda Can Tab",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/soda_can_tab.png",
+   "desc": "A whit of chainmail",
+   "latin": "Tirulus aluminus",
+   "card": "icons/_card_junk/soda_can_tab.webp"
+  },
+  "stamp": {
+   "name": "Stamp",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/stamp.png",
+   "desc": "Do not lick",
+   "latin": "Sigillum postalis",
+   "card": "icons/_card_junk/stamp.webp"
+  },
+  "headphones_90s": {
+   "name": "90s Headphones",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/headphones_90s.png",
+   "desc": "Still within warranty",
+   "latin": "Auricularis nonagenarius",
+   "card": "icons/_card/headphones_90s.webp"
+  },
+  "chewed_eraser": {
+   "name": "Chewed Eraser",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/chewed_eraser.png",
+   "desc": "Tastes the way it smells",
+   "latin": "Erasmus masticatus",
+   "card": "icons/_card/chewed_eraser.webp"
+  },
+  "burger_wrapper": {
+   "name": "Burger Wrapper",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/burger_wrapper.png",
+   "desc": "The best fast food sandwich",
+   "latin": "Involucrum bovinus",
+   "card": "icons/_card/burger_wrapper.webp"
+  },
+  "train_ticket_stub": {
+   "name": "Train Ticket Stub",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/train_ticket_stub.png",
+   "desc": "I love my station",
+   "latin": "Transitum fragmentum",
+   "card": "icons/_card_junk/train_ticket_stub.webp"
+  },
+  "watch_battery": {
+   "name": "Watch Battery",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/watch_battery.png",
+   "desc": "Extra spicy flavor",
+   "latin": "Energia horologii",
+   "card": "icons/_card_junk/watch_battery.webp"
+  },
+  "wine_cork": {
+   "name": "Wine-Stained Cork",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/wine_cork.png",
+   "desc": "Celebrated for its excellence",
+   "latin": "Quercus tapperus",
+   "card": "icons/_card_junk/wine_cork.webp"
+  },
+  "wristband": {
+   "name": "Plastic Wristband",
+   "category": 3,
+   "tier": 1,
+   "art": "icons/junk/wristband.png",
+   "desc": "Scene forever chemical",
+   "latin": "Bracchium plasticus",
+   "card": "icons/_card/wristband.webp"
+  },
+  "hammer_t5": {
+   "name": "Diamond Hammer",
+   "category": 4,
+   "tier": 6,
+   "art": "icons/hammers/hammer_t5.png",
+   "desc": "+90% craft bonus, 1% break chance",
+   "latin": "Malleus diamantus",
+   "card": "icons/_card/hammer_t5.webp",
+   "card_bg": "icons/_bg/hammer_t5.webp"
+  },
+  "hammer_t4": {
+   "name": "Adamantine Hammer",
+   "category": 4,
+   "tier": 5,
+   "art": "icons/hammers/hammer_t4.png",
+   "desc": "+35% craft bonus, 2% break chance",
+   "latin": "Malleus adamantinus",
+   "card": "icons/_card/hammer_t4.webp",
+   "card_bg": "icons/_bg/hammer_t4.webp"
+  },
+  "hammer_t3": {
+   "name": "Mithril Hammer",
+   "category": 4,
+   "tier": 4,
+   "art": "icons/hammers/hammer_t3.png",
+   "desc": "+20% craft bonus, 10% break chance",
+   "latin": "Malleus mithrilum",
+   "card": "icons/_card/hammer_t3.webp",
+   "card_bg": "icons/_bg/hammer_t3.webp"
+  },
+  "hammer_t2": {
+   "name": "Bronze Hammer",
+   "category": 4,
+   "tier": 3,
+   "art": "icons/hammers/hammer_t2.png",
+   "desc": "+5% craft bonus, 5% break chance",
+   "latin": "Malleus bronzium",
+   "card": "icons/_card/hammer_t2.webp",
+   "card_bg": "icons/_bg/hammer_t2.webp"
+  },
+  "hammer_t1": {
+   "name": "Tin Hammer",
+   "category": 4,
+   "tier": 2,
+   "art": "icons/hammers/hammer_t1.png",
+   "desc": "+0% craft bonus, 10% break chance",
+   "latin": "Malleus stannus",
+   "card": "icons/_card/hammer_t1.webp",
+   "card_bg": "icons/_bg/hammer_t1.webp"
+  },
+  "black_lotus": {
+   "name": "Black Lotus",
+   "category": 5,
+   "tier": 6,
+   "art": "icons/flowers/black_lotus.png",
+   "desc": "Sacred lotus (black)",
+   "latin": "Nelumbo nucifera",
+   "card": "icons/_card/black_lotus.webp",
+   "bg": "https://wiki.remilia.org/images/f/f5/Beetleboy_Black_Lotus_Background.webp"
+  },
+  "pollen_super_rare": {
+   "name": "Adamantine Pollen",
+   "category": 5,
+   "tier": 5,
+   "art": "icons/flowers/pollen_super_rare.png",
+   "desc": "From Adamantine flowers",
+   "latin": "Pulvis adamantinus",
+   "card": "icons/_card/pollen_super_rare.webp",
+   "card_bg": "icons/_bg/pollen_super_rare.webp"
+  },
+  "gazania": {
+   "name": "Gazania",
+   "category": 5,
+   "tier": 5,
+   "art": "icons/flowers/gazania.png",
+   "desc": "Garden gazania",
+   "latin": "Gazania x splendens",
+   "card": "icons/_card/gazania.webp",
+   "card_bg": "icons/_bg/gazania.webp",
+   "bg": "https://wiki.remilia.org/images/3/3a/Beetleboy_Gazania_Background.webp"
+  },
+  "hellebore": {
+   "name": "Green Hellebore",
+   "category": 5,
+   "tier": 5,
+   "art": "icons/flowers/hellebore.png",
+   "desc": "Green hellebore",
+   "latin": "Helleborus viridis",
+   "card": "icons/_card/hellebore.webp",
+   "card_bg": "icons/_bg/hellebore.webp"
+  },
+  "pincushion": {
+   "name": "Pincushion",
+   "category": 5,
+   "tier": 5,
+   "art": "icons/flowers/pincushion.png",
+   "desc": "Mossel bay pincushion",
+   "latin": "Leucospermum praecox",
+   "card": "icons/_card/pincushion.webp",
+   "card_bg": "icons/_bg/pincushion.webp",
+   "bg": "https://wiki.remilia.org/images/5/5d/Beetleboy_Pincushion_Background.webp"
+  },
+  "passionflower": {
+   "name": "Purple Passionflower",
+   "category": 5,
+   "tier": 5,
+   "art": "icons/flowers/passionflower.png",
+   "desc": "Purple passionflower",
+   "latin": "Passiflora incarnata",
+   "card": "icons/_card/passionflower.webp",
+   "card_bg": "icons/_bg/passionflower.webp"
+  },
+  "camellia": {
+   "name": "Camellia",
+   "category": 5,
+   "tier": 4,
+   "art": "icons/flowers/camellia.png",
+   "desc": "Japanese camellia",
+   "latin": "Camellia japonica",
+   "card": "icons/_card/camellia.webp",
+   "card_bg": "icons/_bg/camellia.webp",
+   "bg": "https://wiki.remilia.org/images/2/2f/Beetleboy_Camellia_Background.webp"
+  },
+  "fringed_iris": {
+   "name": "Fringed Iris",
+   "category": 5,
+   "tier": 4,
+   "art": "icons/flowers/fringed_iris.png",
+   "desc": "Fringed iris",
+   "latin": "Iris japonica",
+   "card": "icons/_card/fringed_iris.webp",
+   "card_bg": "icons/_bg/fringed_iris.webp"
+  },
+  "pollen_rare": {
+   "name": "Mithril Pollen",
+   "category": 5,
+   "tier": 4,
+   "art": "icons/flowers/pollen_rare.png",
+   "desc": "From Mithril flowers",
+   "latin": "Pulvis mithrilum",
+   "card": "icons/_card/pollen_rare.webp",
+   "card_bg": "icons/_bg/pollen_rare.webp"
+  },
+  "morning_glory": {
+   "name": "Morning Glory",
+   "category": 5,
+   "tier": 4,
+   "art": "icons/flowers/morning_glory.png",
+   "desc": "Garden morning glory",
+   "latin": "Ipomoea tricolor",
+   "card": "icons/_card/morning_glory.webp",
+   "card_bg": "icons/_bg/morning_glory.webp",
+   "bg": "https://wiki.remilia.org/images/6/69/Beetleboy_Morning_Glory_Background.webp"
+  },
+  "royal_poinciana": {
+   "name": "Royal Poinciana",
+   "category": 5,
+   "tier": 4,
+   "art": "icons/flowers/royal_poinciana.png",
+   "desc": "Royal poinciana",
+   "latin": "Delonix regia",
+   "card": "icons/_card/royal_poinciana.webp",
+   "card_bg": "icons/_bg/royal_poinciana.webp",
+   "bg": "https://wiki.remilia.org/images/8/83/Beetleboy_Royal_Poinciana_Background.webp"
+  },
+  "larkspur": {
+   "name": "Two-spike Larkspur",
+   "category": 5,
+   "tier": 4,
+   "art": "icons/flowers/larkspur.png",
+   "desc": "Two-spike larkspur",
+   "latin": "Delphinium distichum",
+   "card": "icons/_card/larkspur.webp",
+   "card_bg": "icons/_bg/larkspur.webp"
+  },
+  "pollen_uncommon": {
+   "name": "Bronze Pollen",
+   "category": 5,
+   "tier": 3,
+   "art": "icons/flowers/pollen_uncommon.png",
+   "desc": "From Bronze flowers",
+   "latin": "Pulvis bronzium",
+   "card": "icons/_card/pollen_uncommon.webp",
+   "card_bg": "icons/_bg/pollen_uncommon.webp"
+  },
+  "gallic_rose": {
+   "name": "Gallic Rose",
+   "category": 5,
+   "tier": 3,
+   "art": "icons/flowers/gallic_rose.png",
+   "desc": "Gallic rose",
+   "latin": "Rosa gallica",
+   "card": "icons/_card/gallic_rose.webp",
+   "card_bg": "icons/_bg/gallic_rose.webp",
+   "bg": "https://wiki.remilia.org/images/7/74/Beetleboy_Gallic_Rose_Background.webp"
+  },
+  "marigold": {
+   "name": "Marigold",
+   "category": 5,
+   "tier": 3,
+   "art": "icons/flowers/marigold.png",
+   "desc": "Pot marigold",
+   "latin": "Calendula officinalis",
+   "card": "icons/_card/marigold.webp",
+   "card_bg": "icons/_bg/marigold.webp",
+   "bg": "https://wiki.remilia.org/images/3/39/Beetleboy_Marigold_Background.webp"
+  },
+  "milk_thistle": {
+   "name": "Milk Thistle",
+   "category": 5,
+   "tier": 3,
+   "art": "icons/flowers/milk_thistle.png",
+   "desc": "Milk thistle",
+   "latin": "Silybum marianum",
+   "card": "icons/_card/milk_thistle.webp",
+   "card_bg": "icons/_bg/milk_thistle.webp",
+   "bg": "https://wiki.remilia.org/images/a/a8/Beetleboy_Milk_Thistle_Background.webp"
+  },
+  "magnolia": {
+   "name": "Southern Magnolia",
+   "category": 5,
+   "tier": 3,
+   "art": "icons/flowers/magnolia.png",
+   "desc": "Southern magnolia",
+   "latin": "Magnolia grandiflora",
+   "card": "icons/_card/magnolia.webp",
+   "card_bg": "icons/_bg/magnolia.webp"
+  },
+  "st_johns_wort": {
+   "name": "Spotted St. John's Wort",
+   "category": 5,
+   "tier": 3,
+   "art": "icons/flowers/st_johns_wort.png",
+   "desc": "Spotted St. John's wort",
+   "latin": "Hypericum punctatum",
+   "card": "icons/_card/st_johns_wort.webp",
+   "card_bg": "icons/_bg/st_johns_wort.webp"
+  },
+  "carnation": {
+   "name": "Chinese Pink Carnation",
+   "category": 5,
+   "tier": 2,
+   "art": "icons/flowers/carnation.png",
+   "desc": "Chinese pink carnation",
+   "latin": "Dianthus chinensis",
+   "card": "icons/_card/carnation.webp",
+   "card_bg": "icons/_bg/carnation.webp"
+  },
+  "snapdragon": {
+   "name": "Common Snapdragon",
+   "category": 5,
+   "tier": 2,
+   "art": "icons/flowers/snapdragon.png",
+   "desc": "Common snapdragon",
+   "latin": "Antirrhinum majus",
+   "card": "icons/_card/snapdragon.webp",
+   "card_bg": "icons/_bg/snapdragon.webp"
+  },
+  "daisy": {
+   "name": "Daisy",
+   "category": 5,
+   "tier": 2,
+   "art": "icons/flowers/daisy.png",
+   "desc": "Oxeye daisy",
+   "latin": "Leucanthemum vulgare",
+   "card": "icons/_card/daisy.webp",
+   "card_bg": "icons/_bg/daisy.webp",
+   "bg": "https://wiki.remilia.org/images/6/67/Beetleboy_Daisy_Background.webp"
+  },
+  "petunia": {
+   "name": "Large White Petunia",
+   "category": 5,
+   "tier": 2,
+   "art": "icons/flowers/petunia.png",
+   "desc": "Large white petunia",
+   "latin": "Petunia axillaris",
+   "card": "icons/_card/petunia.webp",
+   "card_bg": "icons/_bg/petunia.webp"
+  },
+  "poppy": {
+   "name": "Poppy",
+   "category": 5,
+   "tier": 2,
+   "art": "icons/flowers/poppy.png",
+   "desc": "Common poppy",
+   "latin": "Papaver rhoeas",
+   "card": "icons/_card/poppy.webp",
+   "card_bg": "icons/_bg/poppy.webp"
+  },
+  "sunflower": {
+   "name": "Sunflower",
+   "category": 5,
+   "tier": 2,
+   "art": "icons/flowers/sunflower.png",
+   "desc": "Common sunflower",
+   "latin": "Helianthus annuus",
+   "card": "icons/_card/sunflower.webp",
+   "card_bg": "icons/_bg/sunflower.webp",
+   "bg": "https://wiki.remilia.org/images/c/c2/Beetleboy_Sunflower_Background.webp"
+  },
+  "pollen_common": {
+   "name": "Tin Pollen",
+   "category": 5,
+   "tier": 2,
+   "art": "icons/flowers/pollen_common.png",
+   "desc": "From Tin flowers",
+   "latin": "Pulvis stannus",
+   "card": "icons/_card/pollen_common.webp",
+   "card_bg": "icons/_bg/pollen_common.webp"
+  },
+  "specimen_pin": {
+   "name": "Specimen Pin",
+   "category": 6,
+   "tier": 5,
+   "art": "icons/artifacts/specimen_pin.png",
+   "desc": "We have the technology",
+   "latin": "Acus pinnatorum",
+   "card": "icons/_card/specimen_pin.webp"
+  },
+  "gunpowder": {
+   "name": "Gunpowder",
+   "category": 6,
+   "tier": 5,
+   "art": "icons/artifacts/gunpowder.png",
+   "card": "icons/artifacts/gunpowder.webp"
+  },
+  "moss": {
+   "name": "Moss",
+   "category": 6,
+   "tier": 5,
+   "art": "icons/artifacts/moss.png",
+   "desc": "Damp forest carpet",
+   "latin": "Muscus viridis",
+   "card": "icons/artifacts/moss.png"
+  },
+  "pinecone": {
+   "name": "Pinecone",
+   "category": 6,
+   "tier": 5,
+   "art": "icons/artifacts/pinecone.png",
+   "card": "icons/artifacts/pinecone.png"
+  },
+  "cattail": {
+   "name": "Cattail",
+   "category": 6,
+   "tier": 4,
+   "art": "icons/artifacts/cattail.png",
+   "desc": "Marsh reed",
+   "latin": "Typha latifolia",
+   "card": "icons/artifacts/cattail.png"
+  },
+  "nectar": {
+   "name": "Nectar",
+   "category": 6,
+   "tier": 4,
+   "art": "icons/artifacts/nectar.png",
+   "desc": "Concentrated sweetness",
+   "latin": "Sucrosus ambrosium",
+   "card": "icons/artifacts/nectar.png"
+  },
+  "beetleboy_key": {
+   "name": "BeetleBoy Key",
+   "category": 7,
+   "tier": 2,
+   "art": "icons/unique/beetleboy_key.png",
+   "desc": "Once shiny and chrome",
+   "latin": "Slotus reserus",
+   "card": "icons/_card/beetleboy_key.webp"
+  },
+  "arrowhead": {
+   "name": "Arrowhead",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/arrowhead.png",
+   "card": "icons/trophy-items/arrowhead.png"
+  },
+  "cult_medallion": {
+   "name": "CULT Medallion",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/cult_medallion.png",
+   "card": "icons/trophy-items/cult_medallion.png"
+  },
+  "chinese_coin": {
+   "name": "Chinese Coin",
+   "category": 8,
+   "tier": 2,
+   "art": "icons/trophy-items/chinese_coin.png",
+   "card": "icons/trophy-items/chinese_coin.png",
+   "desc": "Final circulating treasure"
+  },
+  "compass": {
+   "name": "Compass",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/compass.png",
+   "card": "icons/trophy-items/compass.png"
+  },
+  "d20": {
+   "name": "D20",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/d20.png",
+   "card": "icons/trophies/trophy_d20.webp"
+  },
+  "deck_of_cards": {
+   "name": "Deck of Cards",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/deck_of_cards.png",
+   "card": "icons/trophies/trophy_deck_of_cards.webp"
+  },
+  "engraved_lighter": {
+   "name": "Engraved Lighter",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/engraved_lighter.png",
+   "card": "icons/trophy-items/engraved_lighter.png"
+  },
+  "goya_miniature": {
+   "name": "Goya Miniature Painting",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/goya_miniature.png",
+   "card": "icons/trophies/trophy_goya_miniature.webp"
+  },
+  "jade_cabbage": {
+   "name": "Jade Cabbage",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/jade_cabbage.png",
+   "card": "icons/trophy-items/jade_cabbage.png"
+  },
+  "joystick": {
+   "name": "Joystick",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/joystick.png",
+   "card": "icons/trophies/trophy_joystick.webp"
+  },
+  "juex_card": {
+   "name": "Juex Card",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/juex_card.png",
+   "card": "icons/trophy-items/juex_card.png"
+  },
+  "milady_fumoku": {
+   "name": "Milady Fumoku",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/milady_fumoku.png",
+   "card": "icons/trophy-items/milady_fumoku.png"
+  },
+  "mokia": {
+   "name": "Mokia",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/mokia.png",
+   "card": "icons/trophy-items/mokia.png"
+  },
+  "oriental_fan": {
+   "name": "Oriental Fan",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/oriental_fan.png",
+   "card": "icons/trophy-items/oriental_fan.png"
+  },
+  "police_badge": {
+   "name": "Police Badge",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/police_badge.webp",
+   "card": "icons/trophies/trophy_police_badge.webp"
+  },
+  "prism": {
+   "name": "Prism",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/prism.png",
+   "card": "icons/trophy-items/prism.png"
+  },
+  "remilianet_id": {
+   "name": "Reminet ID",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/remilianet_id.webp",
+   "card": "icons/trophies/trophy_remilianet_id.webp"
+  },
+  "roman_dodeca": {
+   "name": "Roman Dodecahedron",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/roman_dodeca.png",
+   "card": "icons/trophy-items/roman_dodeca.png"
+  },
+  "stradivarius": {
+   "name": "Stradivarius",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/stradivarius.png",
+   "card": "icons/trophy-items/stradivarius.png"
+  },
+  "thumb_drive": {
+   "name": "Thumb Drive",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/thumb_drive.png",
+   "card": "icons/trophy-items/thumb_drive.png"
+  },
+  "titanium_cube": {
+   "name": "Titanium Cube",
+   "category": 8,
+   "tier": 7,
+   "art": "icons/trophy-items/titanium_cube.png",
+   "card": "icons/trophy-items/titanium_cube.png"
+  },
+  "trophy_arrowhead": {
+   "name": "Arrowhead Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_arrowhead.webp",
+   "card": "icons/trophies/trophy_arrowhead.webp"
+  },
+  "trophy_cult_medallion": {
+   "name": "CULT Medallion Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_cult_medallion.webp",
+   "card": "icons/trophies/trophy_cult_medallion.webp"
+  },
+  "trophy_chinese_coin": {
+   "name": "Chinese Coin Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_chinese_coin.webp",
+   "card": "icons/trophies/trophy_chinese_coin.webp"
+  },
+  "trophy_compass": {
+   "name": "Compass Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_compass.webp",
+   "card": "icons/trophies/trophy_compass.webp"
+  },
+  "trophy_d20": {
+   "name": "D20 Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_d20.webp",
+   "card": "icons/trophies/trophy_d20.webp"
+  },
+  "trophy_deck_of_cards": {
+   "name": "Deck of Cards Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_deck_of_cards.webp",
+   "card": "icons/trophies/trophy_deck_of_cards.webp"
+  },
+  "trophy_engraved_lighter": {
+   "name": "Engraved Lighter Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_engraved_lighter.webp",
+   "card": "icons/trophies/trophy_engraved_lighter.webp"
+  },
+  "trophy_goya_miniature": {
+   "name": "Goya Miniature Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_goya_miniature.webp",
+   "card": "icons/trophies/trophy_goya_miniature.webp"
+  },
+  "trophy_jade_cabbage": {
+   "name": "Jade Cabbage Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_jade_cabbage.webp",
+   "card": "icons/trophies/trophy_jade_cabbage.webp"
+  },
+  "trophy_joystick": {
+   "name": "Joystick Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_joystick.webp",
+   "card": "icons/trophies/trophy_joystick.webp"
+  },
+  "trophy_juex_card": {
+   "name": "Juex Card Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_juex_card.webp",
+   "card": "icons/trophies/trophy_juex_card.webp"
+  },
+  "trophy_milady_fumoku": {
+   "name": "Milady Fumoku Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_milady_fumoku.webp",
+   "card": "icons/trophies/trophy_milady_fumoku.webp"
+  },
+  "trophy_mokia": {
+   "name": "Mokia Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_mokia.webp",
+   "card": "icons/trophies/trophy_mokia.webp"
+  },
+  "trophy_oriental_fan": {
+   "name": "Oriental Fan Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_oriental_fan.webp",
+   "card": "icons/trophies/trophy_oriental_fan.webp"
+  },
+  "trophy_police_badge": {
+   "name": "Police Badge Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_police_badge.webp",
+   "card": "icons/trophies/trophy_police_badge.webp"
+  },
+  "trophy_prism": {
+   "name": "Prism Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_prism.webp",
+   "card": "icons/trophies/trophy_prism.webp"
+  },
+  "trophy_remilianet_id": {
+   "name": "Reminet ID Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_remilianet_id.webp",
+   "card": "icons/trophies/trophy_remilianet_id.webp"
+  },
+  "trophy_roman_dodeca": {
+   "name": "Roman Dodecahedron Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_roman_dodeca.webp",
+   "card": "icons/trophies/trophy_roman_dodeca.webp"
+  },
+  "trophy_stradivarius": {
+   "name": "Stradivarius Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_stradivarius.webp",
+   "card": "icons/trophies/trophy_stradivarius.webp"
+  },
+  "trophy_thumb_drive": {
+   "name": "Thumb Drive Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_thumb_drive.webp",
+   "card": "icons/trophies/trophy_thumb_drive.webp"
+  },
+  "trophy_titanium_cube": {
+   "name": "Titanium Cube Trophy",
+   "category": 9,
+   "tier": 7,
+   "art": "icons/trophies/trophy_titanium_cube.webp",
+   "card": "icons/trophies/trophy_titanium_cube.webp"
+  },
+  "harlequin": {
+   "name": "Harlequin Beetle",
+   "category": 2,
+   "tier": 5,
+   "desc": "Harlequin beetle",
+   "latin": "Acrocinus longimanus"
+  }
+ }
+}

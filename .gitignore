@@ -1,0 +1,25 @@
+.claude/
+__pycache__/
+.DS_Store
+# The BeetleCraft booklet lives in its own repo (Beetle-Informer-BeetleCraft-Guide).
+*.pdf
+# Screenshots: the dashboard shows your account and other people, so none belongs in the repo.
+*.png
+
+# Your sign-in and everything RemiDex saves live in ~/Library/Application Support/remilianet-poke-browser, never in
+# this folder. These are here in case a copy ever ends up in it anyway: they must never be committed.
+cookies.json
+state.json
+game.json
+feed.json
+everyone.json
+overrides.json
+craft_stats.json
+removed_recipes.json
+profile_edit.json
+chrome-profile/
+dashboard/
+venv/
+.env
+*.log
+*.tmp
