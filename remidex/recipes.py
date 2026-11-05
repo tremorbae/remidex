@@ -7,7 +7,6 @@ from itertools import permutations
 from pathlib import Path
 
 import quests
-import store
 from remidex.core import (
     APP_DIR,
     ASSEMBLE,
@@ -15,9 +14,12 @@ from remidex.core import (
     KEY,
     LOG_FILE,
     OVERRIDES_FILE,
+    PURPLE,
     SACRIFICE,
     SMASH,
+    TIN_HAMMER_CRAFT,
     editing,
+    fits_match,
     log,
     read_json,
     write_json,
@@ -39,7 +41,7 @@ LONG_SHOT = 1 / 3  # a smash this likely to work or less (it fails at least twic
 #   steps, so the Green Beetles it burns don't hold up the rest of the plan; with hammer timing on, only with a fresh hammer
 RISKY_COST = 6  # ... and an Adamantine-and-up or low-odds smash as this many crafts more: they're hard on hammers
 HUNTED_COST = 4  # ... and each thing only hunts and claims bring as costing about this many crafts
-STUCK_COST = 1000  # for a second plan when the first can't move: anything else beats waiting
+STUCK_COST = 1000  # for a plan made for what a waiting step needs, when the plan can't move: anything else beats waiting
 # What hunts and claims often bring, and about how many crafts' worth of waiting each is (recipe-book groups as "@...",
 # an exact item costs double its group's). The planner waits for these when crafting one would cost more.
 DROPS = {"@junk": 2, SACRIFICE: 1, "@beetle_2": 1, "@beetle_3": 4, "@flower_2": 6, "@flower_3": 8}
@@ -182,9 +184,7 @@ def group_members(gid, bag, book):
     g = book["groups"][gid]
     if "keys" in g:
         return list(g["keys"])
-    m = g["match"]
-    return [k for k, c in bag.cards.items() if c.get("category") == m["category"] and (m.get("tier") is None or c.get("rarity") == m["tier"])
-            and k not in m.get("exclude", []) and not (m.get("exclude_prefix") and k.startswith(m["exclude_prefix"])) and not seasonal(k)]
+    return [k for k, c in bag.cards.items() if fits_match(g["match"], k, c.get("category"), c.get("rarity")) and not seasonal(k)]
 
 
 def in_group(key, gid, book, catalog):
@@ -195,14 +195,14 @@ def in_group(key, gid, book, catalog):
     g = book["groups"][gid]
     if "keys" in g:
         return key in g["keys"]
-    m, item = g["match"], catalog.get(key) or {}
-    return (item.get("category") == m["category"] and (m.get("tier") is None or item.get("tier") == m["tier"])
-            and key not in m.get("exclude", []) and not (m.get("exclude_prefix") and key.startswith(m["exclude_prefix"])))
+    item = catalog.get(key) or {}
+    return fits_match(g["match"], key, item.get("category"), item.get("tier"))
 
 
 def burns_sacrifices(r, book, catalog):
     """A low-odds recipe that takes Green Beetles: the game mostly hands one Green Beetle back, so each try costs two,
-    plus the one sacrificed. The planners never pick these (you still can, by its recipe)."""
+    plus the one sacrificed. The planners only pick these for an Auto make of something nothing else makes (and you can,
+    by its recipe)."""
     return low_odds(r) and any(x == SACRIFICE or x.startswith("@") and in_group(SACRIFICE, x[1:], book, catalog) for x in r["in"])
 
 
@@ -324,8 +324,10 @@ def craft_stats():
 
 
 def makes(r, key, book, catalog):
-    """Whether key is one of what recipe r makes (a member of one of its "@groups" counts)."""
-    return any(o == key or o.startswith("@") and not key.startswith("@") and in_group(key, o[1:], book, catalog) for o in r["out"])
+    """Whether key is one of what recipe r makes (a member of one of its "@groups" counts, and so does any pinned beetle,
+    trophy_<beetle>, for the book's stand-in for one)."""
+    return any(o == key or o.startswith("@") and not key.startswith("@") and in_group(key, o[1:], book, catalog)
+               or o == "trophy_green" and key.startswith("trophy_") and (catalog.get(key[7:]) or {}).get("category") == 2 for o in r["out"])
 
 
 def times_worked(r, seen):
@@ -447,12 +449,14 @@ class Planner:
     says, for each item, None (you hold it), a step number (an earlier step makes it) or "wait" (hunts and claims
     bring it)."""
 
-    def __init__(self, bag, book, catalog, slot3, protect=(), hunted=HUNTED_COST, reserve=None):
+    def __init__(self, bag, book, catalog, slot3, protect=(), hunted=HUNTED_COST, reserve=None, sacrifice=SACRIFICE, forge=True):
         self.bag, self.book, self.catalog, self.hunted = bag, book, catalog, hunted
         self.held = Counter(bag.items)  # what you have and no step has spoken for yet
         self.made = Counter()  # what planned steps make and no later step has spoken for yet
         self.made_by = defaultdict(list)
-        self.spare_greens = bag.count(SACRIFICE)
+        self.sacrifice = sacrifice  # the beetle each smash sacrifices (see sacrifice_kept): one is kept for each, never spent in a recipe
+        self.spare_sacrifices = bag.count(sacrifice)
+        self.forge = forge  # with no hammer, a smash forges a Tin Hammer first (False: Auto Tin Hammer is off, so it waits for one)
         self.slot3, self.hammer = slot3, bool(bag.smash_hammers())
         self.found = set(bag.cards) | set(bag.items)
         self.protect = list(protect)  # what's being made, so never spent on the way
@@ -466,7 +470,7 @@ class Planner:
     def usable(self, pool, key, planned):
         if seasonal(key) or any(self.fits(key, t) for t in self.protect):
             return False
-        return planned or key != SACRIFICE or self.spare_greens > 0
+        return planned or key != self.sacrifice or self.spare_sacrifices > 0
 
     def free(self, pool, key, spec):
         """How many of key a slot for spec may take: all of them, except that an "any ..." slot leaves alone what's reserved
@@ -492,14 +496,15 @@ class Planner:
                 if self.reserve[key] > 0:
                     self.reserve[key] -= 1  # that step has its one now: the rest are free for "any" slots
             pool[key] -= 1
-            if key == SACRIFICE and not planned:
-                self.spare_greens -= 1
+            if key == self.sacrifice and not planned:
+                self.spare_sacrifices -= 1
             return key, (self.made_by[key].pop() if planned else None)
         return None
 
-    def routes(self, spec):
+    def routes(self, spec, anyway=False):
         """The recipes that could make spec, with how many tries each usually takes. Low-odds recipes that give a
-        random one of its tier are included too, as a last resort."""
+        random one of its tier are included too, as a last resort. anyway: for what an Auto make makes, so where nothing
+        else makes it, the ones that burn Green Beetles do (see burns_sacrifices)."""
         direct, _ = recipes_for(spec, self.book, self.catalog)
         if not spec.startswith("@"):
             direct += [r for r in self.book["recipes"] if r not in direct and not r.get("gamble") and not burns_sacrifices(r, self.book, self.catalog)
@@ -507,7 +512,11 @@ class Planner:
         if spec.startswith("trophy_") and spec in self.found:
             return []  # a trophy is won once
         # A recipe that uses up one of spec to make one (rerolling "any Mithril flower") gets you no more of it.
-        return [(r, self.tries(r, spec)) for r in direct if spec not in r["in"]]
+        found = [(r, self.tries(r, spec)) for r in direct if spec not in r["in"]]
+        if anyway and not found:
+            found = [(r, self.tries(r, spec)) for r in self.book["recipes"] if not r.get("gamble") and spec not in r["in"] and burns_sacrifices(r, self.book, self.catalog)
+                     and any(o == spec or o.startswith("@") and in_group(spec, o[1:], self.book, self.catalog) for o in r["out"])]
+        return found
 
     def tries(self, r, spec):
         """About how many tries of r it takes to get spec: by the recipe book and what the bot has seen."""
@@ -548,14 +557,15 @@ class Planner:
             cost += self.worth("hammer_t1")
         return cost * tries
 
-    def obtain(self, spec, depth=0, path=frozenset(), recipe=None, new=False, pin=False):
-        """Plans getting one of spec (new: one more than you hold; recipe: by that recipe). Returns (key, source)."""
+    def obtain(self, spec, depth=0, path=frozenset(), recipe=None, new=False, pin=False, anyway=False):
+        """Plans getting one of spec (new: one more than you hold; recipe: by that recipe; anyway: see routes). Returns
+        (key, source)."""
         if not new and not spec.startswith("@"):
             self.named[spec] += 1
         got = None if new or recipe is not None else self.take(spec, pin)
         if got:
             return got
-        options = [(recipe, self.tries(recipe, spec))] if recipe is not None else self.routes(spec)
+        options = [(recipe, self.tries(recipe, spec))] if recipe is not None else self.routes(spec, anyway)
         best = min(options, key=lambda o: self.estimate(*o)) if options else None
         wait = None if recipe is not None or new else self.wait_cost(spec)
         if depth > PLAN_DEPTH or spec in path or not best or (wait is not None and wait < self.estimate(*best)):
@@ -569,15 +579,15 @@ class Planner:
                 self.obtain(KEY, depth + 1, path)  # the bot unlocks slot 3 as soon as it has the key
                 self.slot3 = True
             if r["mode"] == "smash" and not self.hammer:
-                if "hammer_t1" not in self.bag.hammers() and "hammer_t1" not in self.bag.smash_off:  # (you can only own one of each)
+                if self.forge and "hammer_t1" not in self.bag.hammers() and "hammer_t1" not in self.bag.smash_off:  # (you can only own one of each)
                     self.obtain("hammer_t1", depth + 1, path)
                 self.hammer = True
             got = [None] * len(r["in"])
             # What you already hold goes first, so it's kept for this step; exact items before "any ..." slots.
             for n in sorted(range(len(r["in"])), key=lambda n: (not self.available(r["in"][n]), r["in"][n].startswith("@"))):
                 got[n] = self.obtain(r["in"][n], depth + 1, path, pin="specimen_pin" in r["in"] and r["in"][n].startswith("@"))
-            if r["mode"] == "smash" and self.spare_greens > 0:
-                self.spare_greens -= 1  # the Green Beetle it sacrifices
+            if r["mode"] == "smash" and self.spare_sacrifices > 0:
+                self.spare_sacrifices -= 1  # the beetle it sacrifices
             outs = r["out"][:1] if trophy_first and run == 0 else r["out"]
             out = (r["out"][0] if trophy_first and run == 0 else spec if spec in outs or not spec.startswith("@")
                    else next((o for o in outs if self.fits(o, spec)), spec))
@@ -591,12 +601,10 @@ class Planner:
 
     def ready(self):
         """The planned crafts you could do right now (everything they use, you hold), in plan order, as
-        (label, Assemble or Smash, items, tier)."""
+        (label, Assemble or Smash, items, what the plan wants from it)."""
         for step in self.steps:
             if not step.get("unlock") and all(src is None for src in step["from"]):  # (unlocking slot 3 the bot does on its own)
-                outs = self.book["recipes"][step["recipe"]]["out"]
-                tier = max(item_tier(k, self.bag, self.catalog) for k in step["items"] + outs)
-                yield step["label"], step["mode"], step["items"], tier
+                yield step["label"], step["mode"], step["items"], step["out"]
 
 
 def two_pass(build):
@@ -608,15 +616,22 @@ def two_pass(build):
     return build(reserve) if reserve else plan
 
 
-def plan_make(bag, slot3, make, book, catalog, hunted=HUNTED_COST):
-    """The plan for an Auto make: one more of its item, by its recipe if one was picked."""
+def plan_make(bag, slot3, make, book, catalog, hunted=HUNTED_COST, target=None, beside=None, sacrifice=SACRIFICE, forge=True):
+    """The plan for an Auto make: one more of its item, by its recipe if one was picked. With target, a plan for just that
+    (something a step of the plan beside waits for, see ready_crafts). sacrifice: see sacrifice_kept; forge: see Planner."""
     recipe = book["recipes"][make["recipe"]] if make.get("recipe") is not None else None
 
     def build(reserve):
-        plan = Planner(bag, book, catalog, slot3, protect=make["keys"][:1], hunted=hunted, reserve=reserve)
-        plan.obtain(make["keys"][0], recipe=recipe, new=True)
+        plan = Planner(bag, book, catalog, slot3, protect=make["keys"][:1] + [target] * bool(target), hunted=hunted, reserve=kept_for(beside, reserve),
+                       sacrifice=sacrifice, forge=forge)
+        plan.obtain(target, new=True) if target else plan.obtain(make["keys"][0], recipe=recipe, new=True, anyway=True)  # (a new one: the plan beside has the ones you hold)
         return plan
     return two_pass(build)
+
+
+def kept_for(beside, reserve):
+    """reserve (see two_pass), and what you hold that the plan beside asks for by name, if there's one."""
+    return reserve if beside is None else Counter(reserve or {}) + Counter({k: min(n, beside.bag.count(k)) for k, n in beside.named.items() if beside.bag.count(k)})
 
 
 def need_targets(need):
@@ -628,15 +643,20 @@ def need_targets(need):
     return need if isinstance(need, list) else [need.removeprefix("own:")]
 
 
-def plan_goal(bag, slot3, settings, book, catalog, hunted=HUNTED_COST):
+def plan_goal(bag, slot3, settings, book, catalog, hunted=HUNTED_COST, target=None, beside=None):
     """The plan for the quest picked on the dashboard (see Planner): everything it still needs, the cheapest of the items
     that would do for each, planned like an Auto make, so items a later step needs by name are kept for it (see two_pass).
     What's still needed is by what you really have; the plan only uses what isn't switched off. Unlocking slot 3 shows as
-    a step of its own ({"unlock": True})."""
+    a step of its own ({"unlock": True}). target and beside: see plan_make."""
     needs, spare = goal_needs_left(bag, slot3, settings), usable(bag, settings)
 
     def build(reserve):
-        plan = Planner(spare, book, catalog, slot3, protect=[n[4:] for n in needs if isinstance(n, str) and n.startswith("own:")], hunted=hunted, reserve=reserve)
+        plan = Planner(spare, book, catalog, slot3, protect=[n[4:] for n in needs if isinstance(n, str) and n.startswith("own:")], hunted=hunted, reserve=kept_for(beside, reserve),
+                       sacrifice=sacrifice_kept(settings), forge=settings.get("tin_hammer", True))
+        if target:
+            plan.protect.append(target)
+            plan.obtain(target, new=True)  # (a new one: the plan beside has the ones you hold)
+            return plan
         for need in needs:
             plan.obtain(min(need_targets(need), key=plan.worth))
             if need == "slot3":
@@ -645,35 +665,85 @@ def plan_goal(bag, slot3, settings, book, catalog, hunted=HUNTED_COST):
     return two_pass(build)
 
 
-def goal_crafts(bag, slot3, settings, book, catalog, skipped=frozenset(), fallback=True):
+def goal_crafts(bag, slot3, settings, book, catalog, skipped=frozenset(), fallback=True, first=None):
     """Crafts toward the quest picked on the dashboard that can be done now (see plan_goal and ready_crafts). Empty if
     there's no goal or it's done."""
-    yield from ready_crafts(lambda hunted: plan_goal(bag, slot3, settings, book, catalog, hunted), skipped, fallback)
+    yield from ready_crafts(lambda hunted, *more: plan_goal(bag, slot3, settings, book, catalog, hunted, *more), skipped, fallback, first)
 
 
-def ready_crafts(build, skipped=frozenset(), fallback=True):
-    """The crafts that can be done now, in plan order: from the plan (build(HUNTED_COST)), then, in case none of those can
-    go (say they all wait on junk from hunts), the ready steps of a second plan that avoids waiting wherever it can, even
-    by slow or low-odds routes (build(STUCK_COST)). Steps skipped on the dashboard (by recipe label) wait while the plan
+def ready_crafts(build, skipped=frozenset(), fallback=True, first=None):
+    """The crafts that can be done now, in plan order, as (label, Assemble or Smash, items, what the plan wants from it,
+    where it's from: 0 the plan, 2 a plan for a waiting step): from the plan (build(HUNTED_COST)), then, in case none of
+    those can go (say they all wait on junk from hunts), from plans for just what the plan's steps wait for
+    (build(STUCK_COST, what, the plan)), made from what you hold even where the plan had set it aside for a later step,
+    so the bot doesn't sit idle holding it (what a step asks for by name stays kept for it, and Green Beetles are left
+    for the smashes: its own, and the waiting step's). (1 was a backup plan, in older records.) Steps skipped on the dashboard (by recipe label) wait while the plan
     has any other step left that doesn't need them, even one that can't go yet, so they're done last of all; the steps
     that need what they make don't hold them up. Within each plan the sure steps go first and the long shots (see
-    long_shot) after them, so Green Beetles go where they make progress. fallback: False for the plan's own steps only."""
+    long_shot) after them, so Green Beetles go where they make progress. first: the recipe of a step picked on the dashboard
+    to work on first: it and the steps that make what it needs go before all the rest, long shots too. fallback: False for
+    the plan's own steps only (none for waiting steps)."""
     main = build(HUNTED_COST)
     held_up = set()  # skipped steps, and the steps that need what they make (steps come after the ones they need)
     for i, s in enumerate(main.steps):
         if not s.get("unlock") and (s["label"] in skipped or any(isinstance(f, int) and f in held_up for f in s["from"])):
             held_up.add(i)
     wait = any(not s.get("unlock") and i not in held_up for i, s in enumerate(main.steps))
-    for plan in (main, None) if fallback else (main,):
-        later = []
-        for craft in (plan or build(STUCK_COST)).ready():
+    def plans():  # (each made only when the ones before it have nothing that can go)
+        yield 0, main
+        if fallback:
+            for spec, smash in waited_for(main.steps, held_up):
+                plan = build(STUCK_COST, spec, main)
+                if plan.bag.count(plan.sacrifice) >= sacrifices_used(plan) + smash:
+                    yield 2, plan
+    for tier, plan in plans():
+        ahead, sure, later = needed_for(plan.steps, first), [], []
+        for craft in plan.ready():
+            craft = (*craft, tier)
             if wait and craft[0] in skipped:
                 continue
-            if (r := recipe_named(craft[0])) is not None and long_shot(r):
+            if craft[0] in ahead:
+                yield craft
+            elif (r := recipe_named(craft[0])) is not None and long_shot(r):
                 later.append(craft)
             else:
-                yield craft
+                sure.append(craft)
+        yield from sure
         yield from later
+
+
+def waited_for(steps, held_up=(), most=3):
+    """What a plan's steps wait on hunts and claims for, in plan order, each once and only the first few, as (an item, or
+    an "any ..." like "@flower_2"; whether the step waiting for it is a smash); held_up: the steps not to count."""
+    specs = {}
+    for i, s in enumerate(steps):
+        if not s.get("unlock") and i not in held_up:
+            for spec, f in zip(s["items"], s["from"]):
+                if f == "wait":
+                    specs.setdefault(spec, s["mode"] == SMASH)
+    return list(specs.items())[:most]
+
+
+def sacrifices_used(plan):
+    """How many of the beetle its smashes sacrifice a plan's crafts use: in recipes, and one for each smash."""
+    return sum(s["items"].count(plan.sacrifice) + (s["mode"] == SMASH) for s in plan.steps if not s.get("unlock"))
+
+
+def sacrifice_kept(settings):
+    """The beetle the planners keep one of for each smash to sacrifice: a Purple one while Crafting Beetles (in Analytics)
+    is set to Purple, else a Green one (Auto sacrifices Purple ones only for smashes proven low odds: see pick_sacrifice)."""
+    return PURPLE if settings.get("sacrifice") == PURPLE else SACRIFICE
+
+
+def needed_for(steps, label):
+    """The recipes of a plan's steps called label and of the steps that make what they need (further back too)."""
+    need = set()
+    for i in range(len(steps) - 1, -1, -1):  # (steps come after the ones they need)
+        s = steps[i]
+        if not s.get("unlock") and (s["label"] == label or i in need):
+            need.add(i)
+            need.update(f for f in s["from"] if isinstance(f, int))
+    return {steps[i]["label"] for i in need if not steps[i].get("unlock")}
 
 
 def label_of(key, bag, book):
@@ -760,29 +830,9 @@ def finished_key(task, make):
     return f"{task} done {make['set_at']}"
 
 
-def forget_finished(state, settings):
-    """Once, at the start: an Auto make whose record still has the crafts of an earlier one of the same item that finished
-    (from before finished records were put away) loses them: they're the ones before the log said it was done."""
-    make, task, book = settings.get("make"), task_id("make", settings), recipe_book()[0]
-    record = (state.get("task_logs") or {}).get(task)
-    if not (make and book and isinstance(record, dict) and record.get("done")):
-        return False
-    done = f"BeetleCraft: Auto make is done ({make_title(make['keys'], Bag({}, {}), book)})."
-    try:
-        finished = [store.log_time(m[1]) for raw in LOG_FILE.read_text(errors="replace").splitlines() if (m := store.LINE.match(raw)) and m[2].startswith(done)]
-    except OSError:
-        return False
-    cut = max((when for when in finished if when < make["set_at"]), default=0)
-    kept = [d for d in record["done"] if isinstance(d, list) and d and d[0] > cut + 1]  # (the craft that finished it is logged the same second)
-    if len(kept) == len(record["done"]):
-        return False
-    record.update(done=kept, count=len(kept), made=sum(1 for d in kept if len(d) > 2 and d[2]))
-    return True
-
-
-def make_crafts(bag, slot3, make, book, catalog, skipped=frozenset(), fallback=True):
+def make_crafts(bag, slot3, make, book, catalog, skipped=frozenset(), fallback=True, first=None, sacrifice=SACRIFICE, forge=True):
     """Crafts toward the Auto make that can be done now (see plan_make and ready_crafts)."""
-    yield from ready_crafts(lambda hunted: plan_make(bag, slot3, make, book, catalog, hunted), skipped, fallback)
+    yield from ready_crafts(lambda hunted, *more: plan_make(bag, slot3, make, book, catalog, hunted, *more, sacrifice=sacrifice, forge=forge), skipped, fallback, first)
 
 
 def craft_focus(bag, slot3, settings, book):
@@ -803,7 +853,14 @@ def junk_cube_crafts(bag, book):
     junk = sorted(group_members("junk", bag, book), key=lambda k: -bag.count(k))
     pieces = [k for k in junk for _ in range(bag.count(k))]
     if len(pieces) >= 2:
-        yield JUNK_CUBE_CRAFT, ASSEMBLE, pieces[:2], 1
+        yield JUNK_CUBE_CRAFT, ASSEMBLE, pieces[:2], "junk_cube_t1", 0
+
+
+def tin_hammer_crafts(bag, spare, book):
+    """Two Junk Cubes into a Tin Hammer while you own none (for Auto Tin Hammer). bag: what you have (you can only own one
+    hammer of each tier); spare: what crafts may use (see usable)."""
+    if "hammer_t1" not in bag.hammers() and spare.count("junk_cube_t1") >= 2 and any(recipe_label(r) == TIN_HAMMER_CRAFT for r in book["recipes"]):
+        yield TIN_HAMMER_CRAFT, ASSEMBLE, ["junk_cube_t1", "junk_cube_t1"], "hammer_t1", 0
 
 
 def task_id(kind, settings):
@@ -818,9 +875,10 @@ def task_id(kind, settings):
     return None
 
 
-def note_craft(state, task, label, what, made):
+def note_craft(state, task, label, what, made, aim=None, source=0):
     """Notes a craft that went through: in the stats the planner learns from, and (with task, the Auto make or quest it
-    was for) for the dashboard's craft console. made: the game's card for what came out, None if the smash failed."""
+    was for) for the dashboard's craft console. made: the game's card for what came out, None if the smash failed. aim:
+    the name of what the plan wanted from it; source: 2 if it was made for a waiting step, else 0 (see ready_crafts)."""
     stats, r = read_json(CRAFT_STATS_FILE), recipe_named(label)
     before = times_worked(r, stats[label]) if r and label in stats else 0
     count_craft(stats, label, made and made["beetle"])
@@ -836,58 +894,34 @@ def note_craft(state, task, label, what, made):
     record = task_record(state, task) or {"task": task, "count": 0, "made": 0, "done": []}
     record["made"] = made_count(record) + bool(made)  # (failed smashes count as crafts tried, not as steps done)
     record["count"] += 1
-    record["done"] = (record["done"] + [[time.time(), what, made]])[-TASK_LOG_KEEP:]
+    record["done"] = (record["done"] + [[time.time(), what, made, aim, source]])[-TASK_LOG_KEEP:]
     logs = state.setdefault("task_logs", {})
     logs.pop(task, None)
     logs[task] = record  # (the newest last)
     while len(logs) > TASK_LOGS_KEPT:
         del logs[next(iter(logs))]
-    state.pop("task_log", None)
 
 
-def skipped_labels(kind, settings):
-    """The steps skipped on the dashboard for this Auto make or quest (kind "make" or "goal"), by recipe label: they wait
-    until they're all that's left of the plan (see ready_crafts), so the plan still gets done. Empty for any other."""
-    skipped = settings.get("skipped") or {}
-    return set(skipped.get("labels") or []) if kind in ("make", "goal") and skipped.get("task") == task_id(kind, settings) else set()
+def step_picks(kind, settings):
+    """What's picked on the dashboard for the steps of this Auto make or quest (kind "make" or "goal"), by recipe (see
+    valid_steps): skipped steps wait until they're all that's left of the plan, so the plan still gets done, and the
+    "first" one goes first with the steps it needs (see ready_crafts); a smash can have its own beetle and hammer (see
+    pick_sacrifice and pick_hammer). Nothing picked, for any other."""
+    steps = settings.get("steps") or {}
+    if kind in ("make", "goal") and steps.get("task") and steps["task"] == task_id(kind, settings):
+        return steps
+    return {"task": None, "skipped": [], "first": None, "sacrifice": {}, "hammer": {}}
 
 
 def task_record(state, task):
     """The crafts recorded for a task (see task_id): {"task", "count", "made", "done": [[when, what, made or None], ...]}, or {}."""
     record = (state.get("task_logs") or {}).get(task)
-    legacy = state.get("task_log")  # (from before each task kept its own)
-    return record if isinstance(record, dict) else legacy if isinstance(legacy, dict) and legacy.get("task") == task else {}
+    return record if isinstance(record, dict) else {}
 
 
 def made_count(record):
     """How many of a task's crafts made something (not an unlucky smash): its steps done."""
-    return record["made"] if isinstance(record.get("made"), int) else sum(1 for entry in record.get("done") or [] if len(entry) > 2 and entry[2])
-
-
-def rebuild_task_log(state, settings):
-    """Once, for an Auto make whose record starts when it was last picked (the old kind of id): the crafts toward it before
-    that, from when the last Auto make finished (or the log began), are in the log, so they go back in its record. Without
-    that, stopping an Auto make and picking it again made its plan look as if it had just started. True if it did."""
-    make, task = settings.get("make"), task_id("make", settings)
-    old = f"make {make['set_at']}" if make else None
-    record = (state.get("task_logs") or {}).get(old) or (state.get("task_log") if (state.get("task_log") or {}).get("task") == old else None)
-    if not (task and record):
-        return False
-    try:
-        lines = [(store.log_time(m[1]), m[2]) for raw in LOG_FILE.read_text(errors="replace").splitlines() if (m := store.LINE.match(raw))]
-    except OSError:
-        lines = []
-    began = max((when for when, text in lines if text.startswith("BeetleCraft: Auto make is done") and when < make["set_at"]), default=0)
-    earlier = []
-    for when, text in lines:
-        if began < when < make["set_at"] and "(by you, on RemiliaNET" not in text and (m := CRAFT_LINE.search(text)):
-            earlier.append([when, f"{m[1]} {m[2]}", m[3] or None])
-    done = (earlier + record["done"])[-TASK_LOG_KEEP:]
-    state.setdefault("task_logs", {})[task] = {"task": task, "count": len(earlier) + record["count"], "done": done,
-                                                "made": sum(1 for _, _, made in earlier if made) + made_count(record)}
-    state["task_logs"].pop(old, None)
-    state.pop("task_log", None)
-    return True
+    return record["made"] if isinstance(record.get("made"), int) else 0
 
 
 def recipe_words(r):

@@ -1,12 +1,17 @@
-"""Where RemiDex keeps things on this computer: on a Mac, in Application Support and Logs (launchd runs it); on Windows,
-in %LOCALAPPDATA%\\RemiDex (its keeper runs it: see keeper.py). Nothing else here, so anything can import it."""
+"""Where RemiDex keeps things on this computer: on a server, in the folder REMIDEX_HOME names; on a Mac, in Application
+Support and Logs (launchd runs it); on Windows, in %LOCALAPPDATA%\\RemiDex (its keeper runs it: see keeper.py). Nothing
+else here, so anything can import it."""
 
 import os
 import sys
 from pathlib import Path
 
 WINDOWS = sys.platform == "win32"
-if WINDOWS:
+if os.environ.get("REMIDEX_HOME"):  # (on a server)
+    APP_DIR = Path(os.environ["REMIDEX_HOME"])
+    LOG_DIR = APP_DIR / "logs"
+    VENV_PYTHON = Path(sys.executable)
+elif WINDOWS:
     APP_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "RemiDex"
     LOG_DIR = APP_DIR / "logs"
     VENV_PYTHON = APP_DIR / "venv" / "Scripts" / "python.exe"

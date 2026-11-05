@@ -28,9 +28,8 @@ from remidex.core import (
     sync_playwright,
     write_json,
 )
-from remidex.recipes import forget_finished, rebuild_task_log
 from remidex.settings import alert, current_settings, load_settings
-from remidex.state import cache_for_dashboard, keep_history, move_to_store, save_game
+from remidex.state import cache_for_dashboard, keep_history, save_game
 from remidex.social import (
     accept_requests,
     apply_profile_edit,
@@ -43,7 +42,7 @@ from remidex.social import (
 from remidex.beetle import play_beetleboy
 from remidex.chat import chat_waiting, send_chat, sync_chat
 from remidex.craft import beetlecraft
-from remidex.browser import Site, login
+from remidex.browser import Site, sign_in_from_dashboard
 
 
 TICK = 2  # seconds between looks while waiting: how quickly it notices a change from the dashboard or the site
@@ -160,7 +159,7 @@ def schedule_next(state, settings, poked_at):
 
 
 def pause_for_login(error):
-    """Pauses the bot until --login clears it, with a single notification."""
+    """Pauses the bot until a new sign-in clears it, with a single notification."""
     state = read_json(STATE_FILE)
     if not state.get("needs_login"):
         state["needs_login"] = True
@@ -172,10 +171,10 @@ def pause_for_login(error):
 def run_once(args):
     """python3 poke_browser.py [--dry-run]: one poke (or a preview) right now."""
     if not COOKIES_FILE.exists():
-        sys.exit("Not signed in yet. Run: python3 poke_browser.py --login")
+        sys.exit("Not signed in yet: sign in on RemiDex (http://remidex.localhost:8642)")
     state, settings = read_json(STATE_FILE), load_settings()
     with sync_playwright() as playwright:
-        site = Site(playwright, headless=True)
+        site = Site(playwright)
         try:
             poked_at = poke_next(site, state, args.dry_run, settings)
             if not args.dry_run:
@@ -198,7 +197,7 @@ def react(site, state, settings):
     counts as due, to the ones it affects)."""
     report(state, settings, "Checking in on your account")
     play_beetleboy(site, state, False, settings)
-    beetlecraft(site, state, False, settings)
+    beetlecraft(site, state, False, current_settings())  # (read again: a pause picked during the claims and hunts counts)
     cache_profile_views(site, state)
     if settings["friend_requests"]:
         accept_requests(site, state)
@@ -211,7 +210,7 @@ def chrome_session(state, settings):
     dashboard and news about you from the activity feed are acted on within seconds. Returns once nothing is due for a
     while (and now and then, so Chrome restarts fresh)."""
     with sync_playwright() as playwright:
-        site = Site(playwright, headless=True)
+        site = Site(playwright)
         try:
             opened, first, last_react = time.time(), True, 0
             site.require_sign_in()
@@ -287,21 +286,16 @@ def run_forever():
     hunt, a craft check, who's poked you, friend requests), when something's changed on the dashboard, when there's
     news about you from the activity feed, or when you're looking at the dashboard. Waits quietly while a new sign-in
     is needed."""
-    move_to_store()
     state = read_json(STATE_FILE)
     state["craft_check_at"] = 0  # a restart (an update, say) looks at crafting straight away, not at the next 15-minute check
     state["views_check_at"] = 0  # and at who's looked at your profile (the dashboard's all-time count)
-    state.pop("streak", None)  # (kept by older versions; the history database has it now)
-    state.pop("shelf_trophies", None)  # (older versions arranged your trophy shelf; it's yours to arrange now)
-    rebuild_task_log(state, load_settings())
-    forget_finished(state, load_settings())
     write_json(STATE_FILE, state)
     while True:
         keep_history()
         state = peek_state()
         stay_awake()
         if state.get("needs_login") or not COOKIES_FILE.exists():
-            time.sleep(60)
+            time.sleep(TICK)  # (carries on within seconds of a sign-in on the dashboard)
             continue
         settings = current_settings()
         if changed(FEED_US_FILE):  # something happened to you on RemiliaNET: look at it soon
@@ -334,7 +328,7 @@ def run_forever():
 
 def main():
     parser = argparse.ArgumentParser(description="Plays BeetleBoy and BeetleCraft, and pokes and views people as picked on the dashboard, through a signed-in headless Chrome.")
-    parser.add_argument("--login", action="store_true", help='sign in in a Chrome window (tick "Remember me")')
+    parser.add_argument("--sign-in", action="store_true", help="set by the dashboard's sign-in page: signs in with the email, password (and two-factor code) it sends on stdin")
     parser.add_argument("--dry-run", action="store_true", help="show who is due a poke or a view, without doing either")
     parser.add_argument("--scheduled", action="store_true", help="set by launchd: runs forever, poking on schedule")
     parser.add_argument("--watch-feed", action="store_true", help="record everyone in the activity feed; runs forever (launchd keeps it up)")
@@ -349,11 +343,11 @@ def main():
         watch_feed()
     if args.scheduled:
         run_forever()
+    if args.sign_in:
+        sign_in_from_dashboard()
+        return
     try:
-        if args.login:
-            login()
-        else:
-            run_once(args)
+        run_once(args)
     except NeedsLogin as e:
         pause_for_login(e)
         sys.exit(1)

@@ -29,7 +29,7 @@ from remidex.places import APP_DIR, LOG_DIR, VENV_PYTHON  # noqa: E402  (the Win
 
 PLAYWRIGHT_VERSION = "1.60.0"  # the same as on a Mac
 PORT = 8642
-FILES = ["poke_browser.py", "store.py", "dashboard.py", "dashboard.html", "catalog.json", "recipes.json", "quests.py"]  # what gets copied to APP_DIR
+FILES = ["poke_browser.py", "store.py", "dashboard.py", "dashboard.html", "signin.html", "catalog.json", "recipes.json", "quests.py"]  # what gets copied to APP_DIR
 STARTUP = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "Microsoft/Windows/Start Menu/Programs/Startup/RemiDex.cmd"
 JOBS_FILE = APP_DIR / "jobs.json"  # the keeper's, with its process id (see remidex/keeper.py)
 CHROME = [Path(os.environ.get(v) or "-") / "Google/Chrome/Application/chrome.exe" for v in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
@@ -167,8 +167,7 @@ def install(yes):
     subprocess.run([str(VENV_PYTHON), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", f"playwright=={PLAYWRIGHT_VERSION}"], check=True)
     stop()
     copy_files()
-    if fresh or signed_out():  # (so running this again is how you sign back in)
-        subprocess.run([str(VENV_PYTHON), str(APP_DIR / "poke_browser.py"), "--login"], env=UTF8, check=True)
+    sign_in = fresh or signed_out()  # (signing in happens on RemiDex's own sign-in page, opened at the end)
     STARTUP.parent.mkdir(parents=True, exist_ok=True)
     STARTUP.write_bytes(startup_script().encode())
     subprocess.Popen([str(VENV_PYTHON.with_name("pythonw.exe")), str(APP_DIR / "poke_browser.py"), "--keep-running"], cwd=str(APP_DIR), env=UTF8,
@@ -181,11 +180,14 @@ def install(yes):
         print(f"RemiDex didn't start yet. If it doesn't within a minute, look at {LOG_DIR}", file=sys.stderr)
     if fresh:
         print(f"\nDone. RemiDex is running: http://remidex.localhost:{PORT}")
-        print("Everything is OFF until you switch it on there. RemiDex starts by itself when you sign in to Windows.")
-        print("To stop and remove it: py install_windows.py --uninstall")
-        webbrowser.open(f"http://remidex.localhost:{PORT}")
+        print("Sign in there with your RemiliaNET account. Everything is OFF until you switch it on.")
+        print("RemiDex starts by itself when you sign in to Windows. To stop and remove it: py install_windows.py --uninstall")
+    elif sign_in:
+        print(f"Updated. Sign in to RemiDex: http://remidex.localhost:{PORT}")
     else:
         print(f"Updated. RemiDex: http://remidex.localhost:{PORT}   (logs: {LOG_DIR})")
+    if sign_in:
+        webbrowser.open(f"http://remidex.localhost:{PORT}")
     return 0
 
 

@@ -8,7 +8,7 @@
 <meta name="application-name" content="RemiDex">
 <meta name="apple-mobile-web-app-title" content="RemiDex">
 <meta name="theme-color" content="#1C2788">
-<script>try { const t = JSON.parse(localStorage.getItem("theme")); if (t === "dark" || t === "kawaii") document.documentElement.dataset.theme = t; } catch {}</script>
+<script>try { const t = JSON.parse(localStorage.getItem("theme")); if (["dark", "kawaii", "derp"].includes(t)) document.documentElement.dataset.theme = t; } catch {}</script>
 <meta name="robots" content="noindex, nofollow">  <!-- it only runs on this Mac: never list it anywhere -->
 <meta property="og:site_name" content="RemiDex">
 <meta property="og:title" content="RemiDex">
@@ -35,6 +35,10 @@
     --radius: 14px; --bw: 2px; --page: #ffe6f2; --accent: #ff5fa8; --surface-1: #fff4f9; --surface-2: #ffe1ef; --surface-3: #ffd0e5;
     --border-light: #ffb0d3; --border-dark: #b8467f; --text: #5a2547; --text-2: #5a254799; --chinese: #e8509a; --col-bottom: #ff8fc2;
   }
+  [data-theme=derp] {
+    --radius: 4px; --bw: 1px; --page: #e3fde6; --accent: #001fe9; --surface-1: #f2fff4; --surface-2: #e3fde6; --surface-3: #d9efdf;
+    --border-light: #bdbdcc; --border-dark: #0a0d0b; --text: #0a0d0b; --text-2: #58685d; --chinese: #001fe9; --col-bottom: #bdbdcc;
+  }
   /* Tier colours, as in BeetleBoy: junk, tin, bronze, mithril, adamantine, diamond, trophy. */
   :root { --t1: #a8724f; --t2: #93c46d; --t3: #dcc552; --t4: #57cdd0; --t5: #d65a4e; --t6: #7fb3ef; --t7: #e88bb9; }
   * { box-sizing: border-box; }
@@ -52,6 +56,20 @@
   [data-theme=kawaii] .feed .craft > span { color: #8f45c8; }
   [data-theme=kawaii] :is(.lbtn, .goalbtn, .makebtn):not(.stop, .plain, .play, .pause) { background: #ff5fa8; box-shadow: 0 2px 0 #c2407f; }
   [data-theme=kawaii] .quest .stamp.goal { background: #ff5fa8; }
+
+  /* Derp: Derpetual's mint, ink and electric blue (from the Derpetual Maker site). Flat, with thin outlines and pill buttons. */
+  [data-theme=derp] ::selection { color: #e3fde6; background: #001fe9; }
+  [data-theme=derp] .nav-item, [data-theme=derp] .search input { background: #f2fff4; border-color: #bdbdcc; color: #0a0d0b; box-shadow: none; border-radius: 99px; }
+  [data-theme=derp] .search input::placeholder, [data-theme=derp] .nav-item > div > span { color: #58685d; }
+  [data-theme=derp] .nav-item .ico { border-radius: 50%; }
+  [data-theme=derp] .col { box-shadow: none; }
+  [data-theme=derp] .console { background: #001fe9; box-shadow: none; }
+  [data-theme=derp] .lcd { background: #d9efdf radial-gradient(#aebdb3 .7px, #0000 .7px) 0 0 / 8px 8px; color: #0a0d0b; box-shadow: 0 0 0 4px #e3fde6, 0 0 0 5px #0a0d0b; }
+  [data-theme=derp] .lcd .lcon, [data-theme=derp] .lcd .lcon .ln:first-child { background: #0a0d0b; } [data-theme=derp] .lcd .lcon .scr { color: #e3fde6; } [data-theme=derp] .lcd .lcon .hd { color: #e3fde699; }
+  [data-theme=derp] .lcd .ltab { border-radius: 99px; } [data-theme=derp] .lcd .ltab.on { background: #0a0d0b; color: #e3fde6; }
+  [data-theme=derp] :is(.lbtn, .goalbtn, .makebtn):not(.stop, .plain, .play, .pause) { background: #001fe9; color: #e3fde6; box-shadow: none; border-radius: 99px; }
+  [data-theme=derp] .quest .stamp.goal { background: #001fe9; }
+  [data-theme=derp] .stepmenu { background: #0a0d0b; color: #e3fde6; border-color: #e3fde64d; }
 
   /* Top bar */
   .navbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -186,15 +204,26 @@
   .content { position: relative; padding: 14px; isolation: isolate; }
 
   /* Analytics */
-  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .stat { background: var(--surface-1); border: 2px solid var(--border-light); border-radius: 8px; padding: 8px 10px 9px; position: relative; overflow: hidden; }
-  .stat .k { font-size: 12px; color: var(--text-2); }
-  .stat .v { font: 26px/1.2 Hei, ui-monospace, Menlo, monospace; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .stat .s { font-size: 11px; color: var(--text-2); } .stat .s.split { display: flex; justify-content: space-between; gap: 8px; }
-  .stat .auto { top: 7px; right: 8px; padding: 0; background: none; box-shadow: none; }
-  .stat .auto span { display: none; }  /* the card's own label says Auto, and its line says Manual when it's off */
-  .stat.sw .k { padding-right: 42px; }
+  .stats { container-type: inline-size; background: var(--surface-1); border: 2px solid var(--border-light); border-radius: 8px; overflow: hidden; }  /* a list, a stat a row */
+  .stat { display: grid; grid-template-columns: minmax(110px, 170px) 96px minmax(0, 1fr) 52px; align-items: center; column-gap: 14px; padding: 9px 12px; }
+  .stat + .stat { border-top: 1px solid var(--border-light); }
+  .stat .k { order: 1; font-size: 13px; }
+  .stat .v { order: 2; font: 20px/1.2 Hei, ui-monospace, Menlo, monospace; text-align: right; font-variant-numeric: tabular-nums; }
+  .stat .s { order: 3; font-size: 12px; color: var(--text-2); } .stat .s.split { display: flex; justify-content: space-between; gap: 8px; }
+  .stat .auto { order: 4; position: static; justify-self: end; padding: 0; background: none; box-shadow: none; }
+  .stat .auto span { display: none; }  /* the row's own label says Auto, and its line says Manual when it's off */
   .stat.manual .v { opacity: .45; }
+  /* Crafting Beetles: a three-way switch, Green on the left, Auto in the middle, Purple on the right */
+  .tri { order: 4; justify-self: end; position: relative; display: flex; width: 52px; height: 15px; border-radius: 8px; background: #0005; box-shadow: inset 0 1px 2px #0006; }
+  .tri button { flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 8px; background: none; cursor: pointer; }
+  .tri button:focus-visible { outline: 2px solid var(--text-2); outline-offset: 2px; }
+  .tri i { position: absolute; top: 2px; left: 20.5px; width: 11px; height: 11px; border-radius: 50%; background: #e6e6e6; transition: left .15s; pointer-events: none; }
+  .tri[data-on=green] { background: #35c452; } .tri[data-on=green] i { left: 2px; background: #fff; }  /* (not classes: "auto" is the switches' own) */
+  .tri[data-on=purple] { background: #9152d8; } .tri[data-on=purple] i { left: 39px; background: #fff; }
+  @container (max-width: 480px) {  /* narrow: the name, the number and the switch, with the line under them */
+    .stat { grid-template-columns: minmax(0, 1fr) auto 52px; row-gap: 2px; }
+    .stat .auto, .stat .tri { grid-column: 3; grid-row: 1; } .stat .s { grid-column: 1 / 3; grid-row: 2; }
+  }
 
   /* BeetleBoy console */
   .console { background: linear-gradient(#5d6d60, #3f4b42); border-radius: 14px; padding: 10px; box-shadow: inset 0 2px 0 #ffffff26, 0 3px 0 #2a332c, 0 6px 8px #0004;
@@ -235,7 +264,6 @@
   .bag .item { width: 50px; border-radius: 7px; box-shadow: inset 0 2px 0 #fff7, 0 3px 0 #0005; }
   .bag .item.none { box-shadow: inset 0 2px 0 #fff3, 0 3px 0 #0004; }
   .bag .item .n { font-size: 11px; padding: 2px 0 3px; } .bag .item .ph { font-size: 8px; } .bag .item .season { top: 2px; right: 2px; font-size: 10px; }
-  .bag .empty { font-size: 13px; color: var(--text-2); padding: 6px 2px; }
   button.chip { cursor: pointer; font: inherit; font-size: 11px; } button.chip:hover { border-color: var(--accent); }
   button.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px #0003; }
   .item { position: relative; aspect-ratio: 1 / 1.08; border-radius: 9px; display: flex; flex-direction: column; overflow: hidden;
@@ -274,14 +302,31 @@
   .lcd .lstatus .how { display: block; font-size: 13px; margin-top: 3px; }
   .lcd .ltop { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 2px dashed #0003; }  /* the console across, under the tabs: a step a line */
   .lcd .ltabs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .lcd .lhead { display: flex; gap: 12px; align-items: flex-start; } .lcd .lhead > .lmain { flex: 1; min-width: 0; }
+  .lcd .lmini { flex: none; width: 210px; min-height: 70px; border-radius: 6px; background: #2b2a2c; box-shadow: inset 0 2px 6px #000a; padding: 6px 10px 7px;
+    color: #cfe3f7; font-size: 12px; line-height: 1.5; text-transform: uppercase; }  /* the little screen at the top right: what crafting is doing right now */
+  .lcd .lmini .mh { opacity: .55; } .lcd .lmini .mt { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lcd .lmini .ms { font-size: 10px; line-height: 1.4; opacity: .75; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .lcd .lmini.ok .mt { color: #5df07a; } .lcd .lmini.wait .mt { color: #f0b840; } .lcd .lmini.bad .mt { color: #ff8a80; } .lcd .lmini.dim .mt { opacity: .7; }
+  .lcd .lmini .cur { font-style: normal; animation: blink 1s steps(1) infinite; }
+  @container craft (max-width: 560px) { .lcd .lhead { flex-direction: column; align-items: stretch; } .lcd .lmini { width: auto; min-height: 0; } }
   .lcd .lcon { position: relative; min-height: 180px; border-radius: 6px; background: #2b2a2c; box-shadow: inset 0 2px 6px #000a; }  /* about 9 lines */
   .lcd .lcon .scr { position: absolute; inset: 0; overflow: auto; padding: 0 10px 7px; color: #cfe3f7; font-size: 12px; line-height: 1.5;
     scrollbar-width: thin; scrollbar-color: #fff3 transparent; }
-  .lcd .lcon .ln { display: flex; gap: 7px; border-radius: 3px; } .lcd .lcon .ln > b { flex: none; width: 14px; font-weight: 400; text-align: center; } .lcd .lcon .ln > span { flex: 1; min-width: 0; }
+  .lcd .lcon .ln { display: flex; gap: 7px; border-radius: 3px; } .lcd .lcon .ln > .sn { flex: none; min-width: var(--numw, 2ch); text-align: right; font-style: normal; opacity: .55; } .lcd .lcon .ln > b { flex: none; width: 14px; font-weight: 400; text-align: center; } .lcd .lcon .ln > span { flex: 1; min-width: 0; }
   .lcd .lcon .hd { color: #cfe3f799; } .lcd .lcon .ln:first-child { position: sticky; top: 0; padding-top: 7px; background: #2b2a2c; z-index: 1; } .lcd .lcon .bad { color: #ff8a80; opacity: .75; } .lcd .lcon .dim { opacity: .7; }
-  .lcd .lcon .now, .lcd .lcon .wait { color: #f0b840; } .lcd .lcon .ok { color: #5df07a; } .lcd .lcon .brk { color: #ff8a80; }
-  .skipb { flex: none; margin-left: auto; align-self: center; font: inherit; font-size: 10px; line-height: 1; letter-spacing: .04em; text-transform: uppercase; padding: 3px 6px 2px; border-radius: 3px;
-    border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; opacity: .8; white-space: nowrap; } .skipb:hover:not(:disabled) { opacity: 1; background: #ffffff1f; } .skipb:disabled { opacity: .4; cursor: default; }
+  .lcd .lcon .now, .lcd .lcon .wait { color: #f0b840; } .lcd .lcon .ok { color: #5df07a; } .lcd .lcon .brk { color: #ff8a80; } .lcd .lcon .wfor { color: #f0b840; }
+  .lcd .lcon .ln.picked { color: #5aa2ff; } .lcd .lcon .ln.wait.picked > b { color: #f0b840; }  /* a step with options picked: blue (the next one keeps its yellow mark) */
+  .lcd .tree summary.picked { color: #1747b8; }
+  .optb { flex: none; margin-left: auto; align-self: center; font: inherit; font-size: 10px; line-height: 1; letter-spacing: .04em; text-transform: uppercase; padding: 3px 6px 2px; border-radius: 3px;
+    border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; opacity: .8; white-space: nowrap; visibility: hidden; } .optb:hover, .optb.open { opacity: 1; background: #ffffff1f; }
+  .lcd .lcon .ln:hover > .optb, .lcd .tree summary:hover > .optb, .optb.open, .optb:focus-visible { visibility: visible; }  /* a step's options show when you point at it */
+  .stepmenu { position: fixed; z-index: 70; min-width: 220px; padding: 4px; border-radius: 6px; background: #2b2a2c; color: #cfe3f7; border: 1px solid #cfe3f74d;
+    box-shadow: 0 8px 20px #0007; font: 12px/1 RemiliaPixel, monospace; letter-spacing: .04em; }
+  .stepmenu[hidden] { display: none; }
+  .stepmenu .smi { display: flex; width: 100%; align-items: center; gap: 10px; padding: 7px 8px 6px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .stepmenu .smi:hover:not(:disabled), .stepmenu .smi:focus-visible { background: #ffffff1f; outline: none; } .stepmenu .smi:disabled { opacity: .4; cursor: default; }
+  .stepmenu .smi i { margin-left: auto; font-style: normal; } .stepmenu .smh { padding: 6px 8px 4px; font-size: 10px; opacity: .6; }
   .lcd .lcon .cur { font-style: normal; animation: blink 1s steps(1) infinite; } @keyframes blink { 50% { opacity: 0; } }
   .lcd .lcon .scr { text-transform: uppercase; } .lcd .lcon img { display: inline-block; width: 14px; height: 14px; object-fit: contain; vertical-align: -3px; margin: 0 3px 0 1px; }
   .lcd .lcon .iref { cursor: pointer; } .lcd .lcon .iref:hover { text-decoration: underline; }
@@ -376,8 +421,8 @@
   .ach .feat .art { width: 64px; } .ach .feat .t { font-size: 14px; text-align: center; } .ach .feat .d { font-size: 11px; color: var(--text-2); text-align: center; margin-top: 3px; }
   .ach .agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin-top: 6px; }
   .ach .agrid .acard { display: flex; align-items: center; gap: 8px; padding: 5px 7px; } .ach .agrid .t { flex: 1; font-size: 11px; }
-  .ach .ahead { display: flex; gap: 8px; font: 11px/1 RemiliaPixel, monospace; letter-spacing: .08em; color: var(--text-2); margin: 12px 2px 6px; }
-  .ach .ahead small { margin-left: auto; font: inherit; }
+  .ach .ahead, .tedit .head, .aedit .head { display: flex; gap: 8px; font: 11px/1 RemiliaPixel, monospace; letter-spacing: .08em; color: var(--text-2); margin: 12px 2px 6px; }
+  .ach .ahead small, .tedit .head small, .aedit .head small { margin-left: auto; font: inherit; }
   .ach .lock { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
   .ach .lock + .lock { margin-top: 2px; } .ach .lock .art { width: 30px; filter: grayscale(.8); opacity: .75; }
   .ach .lock .d { font-size: 11px; color: var(--text-2); margin-top: 2px; } .ach .lock .r { font-size: 11px; color: var(--text-2); text-align: right; white-space: nowrap; }
@@ -646,7 +691,7 @@
   footer { font-size: 12px; color: #888; margin-top: 18px; text-align: center; }
   @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .feed { min-height: 420px; } .ach { height: auto; min-height: 0; } }
   @media (max-width: 560px) {
-    .stats, .facts { grid-template-columns: repeat(2, 1fr); } .console { grid-template-columns: 1fr; } .nav-item { min-width: 0; flex: 1 1 140px; }
+    .facts { grid-template-columns: repeat(2, 1fr); } .console { grid-template-columns: 1fr; } .nav-item { min-width: 0; flex: 1 1 140px; }
     .hero { grid-template-columns: 1fr; } .hcard { grid-template-columns: 14px 34px 1fr 46px 48px; row-gap: 4px; } .hcard .meter { grid-column: 3 / 6; grid-row: 2; }
     .sort > span { display: none; } .sort select { max-width: 150px; text-overflow: ellipsis; } .sort + .chip + .fold { margin-left: 0; }
   }
@@ -657,7 +702,6 @@
   /* Editing your trophy shelf and the achievements you show: like editing your profile, a change is handed to the bot to make on RemiliaNET */
   .emsg { padding: 8px 14px; font-size: 12px; } .emsg.ok { color: #2c8a3a; } .emsg.bad { color: #c03535; } .emsg.wait { color: var(--text-2); }
   .tedit { padding: 12px 14px 14px; } .tedit .hint, .aedit .hint { font-size: 12px; color: var(--text-2); margin: 0 0 10px; }
-  .tedit .head, .aedit .head { display: flex; gap: 8px; margin: 12px 2px 6px; font: 11px/1 RemiliaPixel, monospace; letter-spacing: .08em; color: var(--text-2); } .tedit .head small, .aedit .head small { margin-left: auto; font: inherit; }
   .tedit-row { display: grid; grid-template-columns: repeat(5, minmax(0, 86px)); justify-content: center; gap: 6px; margin-bottom: 6px; }
   .tedit-slot { position: relative; aspect-ratio: 1; border: 1px dashed var(--border-light); border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; min-width: 0; }
   .tedit-slot.full { border-style: solid; background: var(--surface-3); } .tedit-slot.over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
@@ -776,8 +820,14 @@
             <div class="stat sw"><button class="auto" data-action="pokes" type="button"><span>AUTO</span><i></i></button><div class="k">Auto Poke</div><div class="v" id="pokes">–</div><div class="s" id="pokesSub">–</div></div>
             <div class="stat sw"><button class="auto" data-action="friend_requests" type="button"><span>AUTO</span><i></i></button><div class="k">Auto Add Friend</div><div class="v" id="requests">–</div><div class="s" id="requestsSub" style="white-space: pre-line">–</div></div>
             <div class="stat sw"><button class="auto" data-action="junk_cubes" type="button"><span>AUTO</span><i></i></button><div class="k">Auto Junk Cubes</div><div class="v" id="junk">–</div><div class="s" id="junkSub">–</div></div>
+            <div class="stat sw"><button class="auto" data-action="tin_hammer" type="button" data-on="Automatic: when you have no Tin Hammer, the bot makes one from two Junk Cubes, and a smash with no hammer forges one first. Click to stop." data-off="Off: the bot never makes a Tin Hammer by itself, and a smash with no hammer waits. Click to let it make one from two Junk Cubes when you have none."><span>AUTO</span><i></i></button><div class="k">Auto Tin Hammer</div><div class="v" id="tin">–</div><div class="s" id="tinSub">–</div></div>
             <div class="stat"><div class="k">Hunts</div><div class="v" id="hunts">–</div><div class="s" id="huntsSub">–</div></div>
             <div class="stat"><div class="k">Crafts</div><div class="v" id="crafts">–</div><div class="s" id="craftsSub">–</div></div>
+            <div class="stat"><div class="tri" id="sacrifice" role="radiogroup" aria-label="Crafting Beetles: the beetle every smash sacrifices">
+              <button type="button" role="radio" data-beetle="green" aria-label="Green" title="Green: every smash sacrifices a Green Beetle"></button>
+              <button type="button" role="radio" data-beetle="auto" aria-label="Auto" title="Auto: a Purple Beetle for smashes proven low odds, a Green one for the rest"></button>
+              <button type="button" role="radio" data-beetle="purple" aria-label="Purple" title="Purple: every smash sacrifices a Purple Beetle"></button><i></i></div>
+              <div class="k">Crafting Beetles</div><div class="v" id="sacBeetles">–</div><div class="s" id="sacSub">–</div></div>
             <div class="stat sw"><button class="auto" data-action="view_profiles" type="button" data-on="Automatic: the bot opens the profiles of people in the activity feed (RemiliaNET tells them you looked, and many look back). Click to stop." data-off="Off: the bot opens nobody's profile. Click to let it open the profiles of people in the activity feed (RemiliaNET tells them you looked)."><span>AUTO</span><i></i></button><div class="k">Viewed You</div><div class="v" id="views">–</div><div class="s" id="viewsSub">–</div></div>
           </div>
         </div>
@@ -802,7 +852,8 @@
         <div class="header"><div class="title"><span>合成</span><span>BeetleCraft</span></div><div class="chip" id="craftState">–</div>
           <button class="headbtn" type="button" id="craftFull" title="Fill the screen with the craft screen">⛶ Full screen</button></div>
         <div class="content pluses craftbox">
-          <div class="lcd"><div class="ltop"><div><div class="lstatus" id="lstatus">–</div><div class="ltabs" id="ltabs"></div></div>
+          <div class="lcd"><div class="ltop"><div class="lhead"><div class="lmain"><div class="lstatus" id="lstatus">–</div><div class="ltabs" id="ltabs"></div></div>
+            <div class="lmini" id="lmini" title="What crafting is doing right now"></div></div>
             <div class="lcon" title="What the bot did, is doing and will do for your Auto make or quest"><div class="scr" id="lcon"></div></div></div><div class="lpane" id="lpane"></div></div>
           <div class="slot3row"><div class="slot3" id="slot3">Crafting slot 3: –</div><button class="makebtn plain" type="button" id="keyRecipe" title="How to make the BeetleBoy Key, which unlocks crafting slot 3">Key recipe</button></div>
           <div id="hammers"></div>
@@ -907,8 +958,9 @@ const THEMES = [  // [choice, name, swatch]
   ["light", "Light", "linear-gradient(90deg, #eaf4fb, #8fb6dc)"],
   ["dark", "Dark", "linear-gradient(90deg, #303030, #111)"],
   ["kawaii", "Pink", "linear-gradient(90deg, #ffd3e8, #ff8fc2)"],  // (kept under its old name, so a saved choice still works)
+  ["derp", "Derp", "linear-gradient(90deg, #e3fde6, #001fe9)"],
 ];
-const THEME_BAR = {dark: "#1a1a1a", kawaii: "#ff8fc2"};
+const THEME_BAR = {dark: "#1a1a1a", kawaii: "#ff8fc2", derp: "#e3fde6"};
 const themePref = () => { const p = store.get("theme", "light"); return THEMES.some(([k]) => k === p) ? p : "light"; };
 function applyTheme() {
   const pref = themePref();
@@ -954,7 +1006,7 @@ async function post(path, body) {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
-const switches = s => ({...s.beetleboy, pokes: s.pokes, friend_requests: s.friend_requests, view_profiles: s.view_profiles, junk_cubes: s.junk_cubes});
+const switches = s => ({...s.beetleboy, pokes: s.pokes, friend_requests: s.friend_requests, view_profiles: s.view_profiles, junk_cubes: s.junk_cubes, tin_hammer: s.tin_hammer});
 function setSwitch(action, auto) { if (action in data.settings.beetleboy) data.settings.beetleboy[action] = auto; else data.settings[action] = auto; }
 
 function key(id, at, readyText, waitText) {
@@ -993,7 +1045,7 @@ function withIcons(text) {  // item names in a line become an icon plus the name
 
 function botTip() {  // what the bot is doing and what's next, for the green dot's tooltip
   const b = data.bot;
-  if (data.needs_login) return "Signed out of RemiliaNET: paste the install line again to sign back in";
+  if (data.needs_login) return "Signed out of RemiliaNET";
   if (!data.jobs.bot) return "The bot isn't running";
   if (!b) return "The bot is running. It will say what it's doing after its next check.";
   const quiet = now() - b.at > 240 && b.chrome, out = [`${quiet ? "No word from the bot for " + span(now() - b.at) + ", last: " : ""}${b.doing}`];
@@ -1005,14 +1057,13 @@ function botTip() {  // what the bot is doing and what's next, for the green dot
 }
 function render(full = true) {
   if (!data) return;
+  if (data.needs_login) { location.replace("/sign-in"); return; }  // signed out: the sign-in page (back here once signed in)
   const running = data.jobs.bot;
   $("dot").className = "status " + (data.needs_login ? "bad" : running ? "ok" : "warn");
   $("dot").title = botTip();
   $("handle").replaceChildren(...(data.handle ? [...tildeName(data.handle), data.needs_login ? " · signed out" : running ? "" : " · stopped"] : ["–"]));
-  const banner = $("banner");
-  banner.style.display = data.needs_login || !running ? "block" : "none";
-  banner.textContent = data.needs_login ? "The bot is paused: RemiliaNET signed it out. To sign back in, paste the RemiDex install line again (it's in the README)."
-    : "The bot isn't running. Start it with ./install_browser.sh in the project folder.";
+  $("banner").style.display = running ? "none" : "block";
+  $("banner").textContent = "The bot isn't running. Start it with ./install_browser.sh in the project folder.";
 
   $("foot").textContent = data.handle ? `@${data.handle}` : "";
   const p = data.pokes, st = data.settings;
@@ -1027,9 +1078,17 @@ function render(full = true) {
   const junk = data.game?.junk || {cubes: 0, loose: 0};
   $("junk").textContent = (given.junk_cubes ?? 0).toLocaleString(); $("junk").title = "Junk Cubes made, all time";
   sub("junkSub", st.junk_cubes ? "Auto on" : "Manual on", `${(data.today.junk_cubes || 0).toLocaleString()} today`);
+  $("tin").textContent = (data.game?.tin_made ?? 0).toLocaleString(); $("tin").title = "Tin Hammers made, all time";
+  sub("tinSub", st.tin_hammer ? "Auto on" : "Manual on", itemsByKey().hammer_t1?.count ? "1 on hand" : "None on hand");
   sub("viewsSub", st.view_profiles ? "Auto views on" : "Auto views off", `${(data.today.viewed_you ?? 0).toLocaleString()} today`);
-  $("hunts").textContent = given.hunts.toLocaleString(); $("huntsSub").textContent = `${(data.today.hunts ?? 0).toLocaleString()} today`;
-  $("crafts").textContent = given.crafts.toLocaleString(); $("craftsSub").textContent = `${(data.today.crafts ?? 0).toLocaleString()} today`;
+  $("hunts").textContent = given.hunts.toLocaleString(); sub("huntsSub", "", `${(data.today.hunts ?? 0).toLocaleString()} today`);  // (today's count lines up with the others')
+  $("crafts").textContent = given.crafts.toLocaleString(); sub("craftsSub", "", `${(data.today.crafts ?? 0).toLocaleString()} today`);
+  const sac = st.sacrifice || "auto", greens = itemsByKey().green?.count || 0, purples = itemsByKey().purple?.count || 0;
+  $("sacrifice").dataset.on = sac;
+  for (const b of $("sacrifice").querySelectorAll("button")) b.setAttribute("aria-checked", String(b.dataset.beetle === sac));
+  $("sacBeetles").textContent = (sac === "green" ? greens : sac === "purple" ? purples : greens + purples).toLocaleString();
+  $("sacBeetles").title = "The beetles you have for smashes to sacrifice";
+  sub("sacSub", {green: "Green only", purple: "Purple only", auto: "Auto · Purple for low odds"}[sac], `${greens.toLocaleString()} Green · ${purples.toLocaleString()} Purple`);
   const on = switches(st);
   for (const b of document.querySelectorAll(".auto")) {
     const auto = !!on[b.dataset.action];
@@ -1055,7 +1114,7 @@ function render(full = true) {
       k.querySelector(".small").textContent = left ? `20 cheese · ${left} ready${on.beetleHunt ? " · the bot is hunting" : ""}` : "Needs 20 cheese";
     }
     $("beetles").textContent = g.beetles; $("discovered").textContent = g.discovered; $("lvl").textContent = g.level;
-    $("craftState").textContent = st.craft ? `Daily reset in: ${span(resetIn())}` : "crafting off";
+    $("craftState").textContent = `Daily reset in: ${span(resetIn())}`;
     $("craftState").title = "Midnight UTC: the daily cheese comes back, and each hammer gets one smash at 0% break chance";
     const bar = g.xp_bar;
     if (bar) {
@@ -1083,7 +1142,7 @@ function render(full = true) {
     logSig = "";
   }
   if (g) {
-    renderLcd(); renderConsole(g);
+    renderLcd(); renderMini(g); renderConsole(g);
     $("slot3").textContent = `Crafting slot 3: ${g.slot3 ? "Unlocked" : "Locked"}`; $("slot3").classList.toggle("open", !!g.slot3);
     renderHammers(g);
     $("craftOff").textContent = g.craft_off.length ? `Switched off: ${g.craft_off.join(", ")}` : "";
@@ -1158,6 +1217,20 @@ async function loadTrophies(fresh = false) {
   try { const r = await fetch(fresh ? "/api/trophies?fresh=1" : "/api/trophies", {cache: "no-store"}); if (r.ok) trophies = await r.json(); } catch {}
   renderTrophies();
 }
+/* The SAVE TO REMILIANET and CANCEL buttons of a profile part's editor (part: "trophies" or "achievements"): saving hands
+   change() to the bot, and both close the editor (close). msg says if the save didn't go through. */
+function editorActions(msg, part, change, close) {
+  const save = el("button", {type: "button", className: "makebtn", textContent: "SAVE TO REMILIANET"}), cancel = el("button", {type: "button", className: "makebtn plain", textContent: "CANCEL"});
+  cancel.onclick = close;
+  save.onclick = async () => {
+    save.disabled = true; showNote(msg, SAVING);
+    try {
+      await post("/api/profile", change());
+      editAsked = Date.now() / 1000 - 2; editFor = part; partNotes[part] = SAVING; close();
+    } catch (err) { save.disabled = false; showNote(msg, ["bad", `Couldn't save that (${err.message}).`]); }
+  };
+  return el("div", {className: "actions"}, save, cancel);
+}
 /* Editing the shelf: drag a trophy to a place (or click one below to put it in the first empty place). Saving hands the
    shelf to the bot, which makes it on RemiliaNET with your sign-in; the section says how that went. */
 function trophyEditor() {
@@ -1200,17 +1273,9 @@ function trophyEditor() {
   }
   tray.ondragover = e => { e.preventDefault(); over(tray, true); }; tray.ondragleave = () => over(tray, false);
   tray.ondrop = e => { e.preventDefault(); over(tray, false); const d = dropped(e); if (d && d.from === "slot") { places[d.index] = 0; draw(); } };  // dropped here: off the shelf
-  const save = el("button", {type: "button", className: "makebtn", textContent: "SAVE TO REMILIANET"}), cancel = el("button", {type: "button", className: "makebtn plain", textContent: "CANCEL"});
-  cancel.onclick = () => { trophyEditing = false; trophiesSig = ""; renderTrophies(); };
-  save.onclick = async () => {
-    save.disabled = true; showNote(msg, SAVING);
-    try {
-      await post("/api/profile", {shelves: places});
-      editAsked = Date.now() / 1000 - 2; editFor = "trophies"; partNotes.trophies = SAVING; trophyEditing = false; trophiesSig = ""; renderTrophies();
-    } catch (err) { save.disabled = false; showNote(msg, ["bad", `Couldn't save that (${err.message}).`]); }
-  };
+  const actions = editorActions(msg, "trophies", () => ({shelves: places}), () => { trophyEditing = false; trophiesSig = ""; renderTrophies(); });
   box.replaceChildren(el("p", {className: "hint", textContent: "Drag a trophy to a place on your shelf, or onto another to swap them. Click one below to put it in the first empty place."}),
-    rows, el("div", {className: "head"}, "NOT ON YOUR SHELF", el("small", {textContent: "drag one here to take it off"})), tray, el("div", {className: "actions"}, save, cancel), msg);
+    rows, el("div", {className: "head"}, "NOT ON YOUR SHELF", el("small", {textContent: "drag one here to take it off"})), tray, actions, msg);
   $("trophyShelves").hidden = true; $("trophyNote").hidden = true; box.hidden = false;
   $("trophyMore").hidden = true; $("trophyEdit").hidden = true;
   draw();
@@ -1266,19 +1331,11 @@ function achievementEditor() {
     count.textContent = `${picked.length} / ${MAX}`;
   }
   dragOrder(listed, ".erow", {done: rows => { picked = rows.map(r => +r.dataset.id); draw(); }});
-  const save = el("button", {type: "button", className: "makebtn", textContent: "SAVE TO REMILIANET"}), cancel = el("button", {type: "button", className: "makebtn plain", textContent: "CANCEL"});
-  cancel.onclick = () => { achEditing = false; achSig = ""; renderAchievements(); };
-  save.onclick = async () => {
-    save.disabled = true; showNote(msg, SAVING);
-    try {
-      await post("/api/profile", {achievementsDisplayed: picked});
-      editAsked = Date.now() / 1000 - 2; editFor = "achievements"; partNotes.achievements = SAVING; achEditing = false; achSig = ""; renderAchievements();
-    } catch (err) { save.disabled = false; showNote(msg, ["bad", `Couldn't save that (${err.message}).`]); }
-  };
+  const actions = editorActions(msg, "achievements", () => ({achievementsDisplayed: picked}), () => { achEditing = false; achSig = ""; renderAchievements(); });
   $("achEdit").hidden = true;
   $("ach").replaceChildren(el("div", {className: "aedit"}, el("p", {className: "hint", textContent: `Pick up to ${MAX} achievements for your profile and drag them into the order you like. The first one is shown big.`}),
     el("div", {className: "head"}, "ON YOUR PROFILE", count), listed, el("div", {className: "head"}, "NOT ON YOUR PROFILE", el("small", {textContent: "+ to show one"})), others,
-    el("div", {className: "actions"}, save, cancel), msg));
+    actions, msg));
   draw();
 }
 $("achEdit").onclick = () => { if (!data.achievements) return; partNotes.achievements = null; achEditing = true; achievementEditor(); };
@@ -1609,13 +1666,57 @@ function craftStatus(g) {
   const hunts = g.hunts.unlock_at && g.hunts.unlock_at > now() ? ` · HUNTS BACK IN ${span(g.hunts.unlock_at - now())}` : "";
   return {
     items: [waitingFor() ? `WAITING FOR ${waitingFor()}` : "WAITING FOR NEW ITEMS", `HUNTS AND CLAIMS BRING THEM${hunts}`],
-    hammer: ["WAITING: NO HAMMER YET", "IT FORGES ONE FROM TWO JUNK CUBES"],
+    hammer: data.settings.tin_hammer ? ["WAITING: NO HAMMER YET", "IT FORGES ONE FROM TWO JUNK CUBES"]
+      : ["WAITING: NO HAMMER", "AUTO TIN HAMMER IS OFF (IN ANALYTICS): TURN IT ON, OR MAKE ONE FROM TWO JUNK CUBES"],
     hammers_off: ["WAITING: YOUR HAMMERS ARE SWITCHED OFF FOR SMASHING", "SWITCH ONE ON UNDER SET UP HAMMERS"],
     slot3: ["WAITING TO UNLOCK CRAFTING SLOT 3", "THE NEXT CRAFT TAKES THREE ITEMS: IT NEEDS THE BEETLEBOY KEY"],
-    beetles: ["WAITING FOR A GREEN BEETLE", (itemsByKey().purple?.count ? "PURPLE BEETLES ARE KEPT FOR SMASHES PROVEN LOW ODDS" : "EACH SMASH SACRIFICES ONE")],
+    beetles: data.settings.sacrifice === "purple" ? ["WAITING FOR A PURPLE BEETLE", "CRAFTING BEETLES IS SET TO PURPLE: EACH SMASH SACRIFICES ONE"]
+      : data.settings.sacrifice === "green" ? ["WAITING FOR A GREEN BEETLE", "CRAFTING BEETLES IS SET TO GREEN: EACH SMASH SACRIFICES ONE"]
+      : ["WAITING FOR A GREEN BEETLE", (itemsByKey().purple?.count ? "PURPLE BEETLES ARE KEPT FOR SMASHES PROVEN LOW ODDS" : "EACH SMASH SACRIFICES ONE")],
     worn: ["WAITING: EVERY HAMMER IS AT ITS LIMIT", `ONE SMASH AT 0% PER HAMMER IN ${span(resetIn())}, OR RAISE A LIMIT BELOW`],
+    picked_beetle: ["WAITING FOR THE BEETLE PICKED FOR THIS STEP", "OR PICK ANOTHER UNDER THE STEP'S OPTIONS"],
+    picked_hammer: ["WAITING: THE HAMMER PICKED FOR THIS STEP CAN'T SMASH NOW", "IT'S AT ITS LIMIT OR SWITCHED OFF: PICK ANOTHER UNDER THE STEP'S OPTIONS"],
     fresh: ["HOLDING A RISKY SMASH FOR A FRESH HAMMER", `IT MOSTLY FAILS, SO IT WAITS FOR THE RESET IN ${span(resetIn())} (HAMMER TIMING, UNDER SET UP HAMMERS)`],
   }[g.wait] || ["NOTHING TO CRAFT RIGHT NOW", ""];
+}
+function miniState(g) {  // the little screen at the top right of the craft screen: [colour, what crafting is doing right now, more, blink]
+  if (data.needs_login) return ["bad", "✗ SIGNED OUT", "SIGN BACK IN AND IT CARRIES ON"];
+  if (!data.jobs.bot) return ["bad", "✗ BOT STOPPED", "NOTHING CRAFTS UNTIL IT'S BACK"];
+  const c = data.crafting, t = now(), junk = what => c.side ? `${typeof c.side === "string" ? c.side : "Auto Junk Cubes"}: ${what}` : what;  // (a switch's own craft)
+  const playing = (data.make && !data.make.done && !data.make.paused) || (data.goal && data.goal.left > 0 && !data.goal.paused);
+  if (c?.doing === "crafting" && t - c.at < 30)  // (a pause lands after the craft that's already on its way)
+    return c.side || playing ? ["ok", "▶ CRAFTING", junk(c.what), true] : ["wait", "❚❚ FINISHING UP", "THIS CRAFT, THEN IT STOPS"];
+  if (c?.doing === "next" && c.until > t - 2 && (c.side || playing)) {
+    const left = Math.ceil(c.until - t);
+    return left > 0 ? ["wait", `◐ NEXT CRAFT IN ${left}`, junk(c.what)] : ["ok", "▶ CRAFTING", junk(c.what), true];
+  }
+  if (g.wait === "paused") return ["wait", "❚❚ PAUSED", "PRESS ▶ PLAY TO CARRY ON"];
+  if (g.wait === "idle") return ["dim", "○ NOT CRAFTING", "NOTHING PICKED: AUTO MAKE AN ITEM OR DO A QUEST"];
+  if (g.next_craft) {
+    const what = g.next_craft.split("\n")[0], at = data.craft_check_at || 0;
+    return at > t + 1 ? ["ok", `▶ CRAFT STARTS IN ${span(at - t)}`, what] : ["ok", "▶ STARTING SOON", what];
+  }
+  const reset = span(resetIn());
+  return {
+    beetles: ["bad", "✗ NO BEETLES", `EACH SMASH NEEDS A ${data.settings.sacrifice === "purple" ? "PURPLE" : "GREEN"} BEETLE: HUNTS AND CLAIMS BRING THEM`],
+    picked_beetle: ["bad", "✗ NO BEETLE", "THE ONE PICKED FOR THIS STEP ISN'T THERE"],
+    hammer: ["bad", "✗ NO HAMMER", data.settings.tin_hammer ? "IT FORGES ONE FROM TWO JUNK CUBES" : "AUTO TIN HAMMER IS OFF (IN ANALYTICS)"],
+    hammers_off: ["bad", "✗ NO HAMMERS", "THEY'RE ALL SWITCHED OFF FOR SMASHING"],
+    worn: ["bad", "✗ HAMMERS AT LIMIT", `FRESH ONES AT THE RESET IN ${reset}`],
+    picked_hammer: ["bad", "✗ HAMMER CAN'T SMASH", "THE ONE PICKED FOR THIS STEP"],
+    fresh: ["wait", "… WAITING FOR RESET", `A RISKY SMASH WAITS FOR A FRESH HAMMER: ${reset}`],
+    slot3: ["bad", "✗ SLOT 3 LOCKED", "THE NEXT CRAFT NEEDS THE BEETLEBOY KEY"],
+    items: ["wait", "… NEED ITEMS", waitingFor() ? `WAITING FOR ${waitingFor()}` : "HUNTS AND CLAIMS BRING THEM"],
+  }[g.wait] || ["dim", "○ NOTHING TO CRAFT", ""];
+}
+let miniSig = "";
+function renderMini(g) {
+  const [look, title, more = "", blink = false] = miniState(g), sig = JSON.stringify([look, title, more, blink]);
+  if (sig === miniSig) return;
+  miniSig = sig;
+  $("lmini").className = `lmini ${look}`;
+  $("lmini").replaceChildren(el("div", {className: "mh", textContent: "> RIGHT NOW"}),
+    el("div", {className: "mt"}, title, ...(blink ? [" ", el("i", {className: "cur", textContent: "_"})] : [])), el("div", {className: "ms", textContent: more}));
 }
 function lbtn(text, cls, onclick) {
   const b = el("button", {type: "button", className: `lbtn ${cls}`, textContent: text});
@@ -1794,7 +1895,7 @@ function recPane(g) {
 function renderLcd() {
   if (lcdHold) return;
   const g = data.game, q = (data.quests || []).find(x => x.id === data.goal?.id);
-  const sig = JSON.stringify([lcdTab, data.settings.skipped, g.next_craft, g.wait, g.craftable, g.recommended, data.goal, data.make, q, data.make_queue, data.goal_queue, data.console, data.recipe_check,
+  const sig = JSON.stringify([lcdTab, data.settings.steps, g.next_craft, g.wait, g.craftable, g.recommended, data.goal, data.make, q, data.make_queue, data.goal_queue, data.console, data.recipe_check,
     Math.floor(Date.now() / 60000), !!book, Object.keys(nameKeys).length]);
   if (sig === lcdSig) return;
   lcdSig = sig;
@@ -1830,7 +1931,7 @@ function planPane() {
 }
 const treeOpen = new Map();  // steps you opened or closed, so a refresh leaves them be
 function planTree(steps, held = {}, next = null) {  // held: how what you already have is made (see held_plans); next: the step to do next
-  const fed = new Set(steps.flatMap(s => (s.from || []).filter(f => typeof f === "number"))), off = skippedSteps(), unskip = new Set();
+  const fed = new Set(steps.flatMap(s => (s.from || []).filter(f => typeof f === "number")));
   const label = k => {  // an item's picture and name: click it to open the item, not the step
     const n = el("span", {className: "tn"}, artImg(k), itemLabel(k).toUpperCase());
     if (k[0] === "@") n.dataset.group = k.slice(1); else n.dataset.key = k;
@@ -1842,9 +1943,8 @@ function planTree(steps, held = {}, next = null) {  // held: how what you alread
     const s = list[i];
     if (s.unlock) return el("div", {className: "leaf", textContent: "UNLOCK CRAFTING SLOT 3 WITH THE BEETLEBOY KEY"});
     const todo = kind === "plan";
-    const sum = el("summary", {}, label(s.out), el("span", {className: `tg ${s.mode}`, textContent: s.mode.toUpperCase()}));
-    if (todo && s === next && !off.has(s.label)) sum.append(skipButton(s, true));
-    else if (todo && off.has(s.label) && !unskip.has(s.label)) { unskip.add(s.label); sum.append(skipButton(s, false)); }
+    const sum = el("summary", {className: todo && hasPicks(s) ? "picked" : ""}, label(s.out), el("span", {className: `tg ${s.mode}`, textContent: s.mode.toUpperCase()}));
+    if (todo) sum.append(optionsButton(s));
     const kids = el("div");
     s.in.forEach((k, j) => {
       const f = s.from[j], sub = held[k];
@@ -1863,40 +1963,111 @@ function planTree(steps, held = {}, next = null) {  // held: how what you alread
   return tree;
 }
 
-/* Skipping a step of the Auto make or quest: it waits until the rest of the plan is done, then it's done (so the plan still
-   gets done). Steps are known by their recipe, so the same craft elsewhere in the plan is skipped too. */
-const skippedSteps = () => new Set(data.settings.skipped || []);
-function nextStep(c) {  // the step the bot does next, as it picks it (see ready_crafts): the first it holds everything for (a sure one
-                         // before a long shot), else the first
+/* A step's options (point at a step still to do): work on it first, skip it (done last), and for a smash, the beetle it
+   sacrifices and the hammer it uses. Steps are known by their recipe, so the same craft elsewhere in the plan gets them too;
+   what's picked lasts while that Auto make or quest does (see pick_for_step in dashboard.py). */
+const stepPicks = () => data.settings.steps || {skipped: [], first: null, sacrifice: {}, hammer: {}};
+const skippedSteps = () => new Set(stepPicks().skipped);
+function firstSteps(steps) {  // the recipes of the step picked to work on first and of the steps that make what it needs (see needed_for)
+  const first = stepPicks().first, need = new Set();
+  for (let i = steps.length - 1; i >= 0; i--) {  // (steps come after the ones they need)
+    const s = steps[i];
+    if (!s.unlock && (s.label === first || need.has(i))) { need.add(i); s.from.forEach(f => { if (typeof f === "number") need.add(f); }); }
+  }
+  return new Set([...need].filter(i => !steps[i].unlock).map(i => steps[i].label));
+}
+function nextStep(c) {  // the step the bot does next, as it picks it (see ready_crafts): the first it holds everything for (the one
+                         // picked to work on first and the steps it needs, then a sure one before a long shot), else the first
   if (c.now) return null;
-  const skip = skippedSteps(), off = new Set(data.game?.craft_off || []), heldUp = new Set();
+  const skip = skippedSteps(), off = new Set(data.game?.craft_off || []), heldUp = new Set(), ahead = firstSteps(c.steps);
   c.steps.forEach((s, i) => { if (!s.unlock && (skip.has(s.label) || s.from.some(f => typeof f === "number" && heldUp.has(f)))) heldUp.add(i); });
   const waits = c.steps.some((s, i) => !s.unlock && !heldUp.has(i));  // skipped steps wait while the rest of the plan has steps left
   const left = c.steps.filter(s => !s.now && !s.unlock && !off.has(s.label) && !(waits && skip.has(s.label)));
   const ready = left.filter(s => s.from.every(f => f === null));
-  return ready.find(s => !s.long) || ready[0] || left[0] || null;  // the sure steps before the long shots, as the bot does
+  return ready.find(s => ahead.has(s.label)) || ready.find(s => !s.long) || ready[0] || left[0] || null;  // the sure steps before the long shots, as the bot does
 }
-function skipButton(s, skip) {
-  const b = el("button", {type: "button", className: "skipb", textContent: skip ? "SKIP STEP" : "UNSKIP",
-    title: skip ? "Do this step last: it waits until the rest of the plan is done (steps that need it wait with it)" : "Put this step back in its place in the plan"});
-  b.addEventListener("click", async e => {
-    e.preventDefault(); e.stopPropagation(); b.disabled = true;  // (not a click on the step: it doesn't open or close)
-    try {
-      data.settings = (await post("/api/skip", {task: data.console.task, label: s.label, skip})).settings;
-      conSig = lcdSig = ""; render(false); refresh();
-    } catch (err) { b.textContent = "COULDN'T SAVE"; b.title = err.message; b.disabled = false; }
+const waitingMark = () => el("span", {className: "wfor", textContent: " · for a waiting step",
+  title: "Nothing in the plan could go right then, so the bot made something a waiting step needs from what you hold, even what the plan had set aside for a later step (a smash always keeps a Green Beetle to sacrifice)."});
+const hasPicks = s => { const p = stepPicks(); return p.first === s.label || p.skipped.includes(s.label) || !!p.sacrifice[s.label] || !!p.hammer[s.label]; };  // (shown in blue)
+function stepNotes(s) {  // what's picked for a step, for its line in the console
+  const p = stepPicks(), beetle = p.sacrifice[s.label], hammer = p.hammer[s.label];
+  return [p.first === s.label ? " · worked on first" : "", skippedSteps().has(s.label) ? " · skipped: done last" : "",
+    beetle ? ` · sacrificing a ${itemLabel(beetle)}` : "", hammer ? ` · with the ${itemLabel(hammer)}` : ""].join("");
+}
+function optionsButton(s) {
+  const b = el("button", {type: "button", className: "optb", textContent: "OPTIONS", title: "Work on this step first, skip it, or pick its beetle and hammer"});
+  b.addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();  // (not a click on the step: it doesn't open or close)
+    if (stepMenuFor === b) closeStepMenu(); else openStepMenu(b, s);
   });
   return b;
 }
+const stepMenu = el("div", {className: "stepmenu", hidden: true});
+document.body.append(stepMenu);
+let stepMenuFor = null;  // the OPTIONS button it's open for
+function closeStepMenu() { stepMenu.hidden = true; stepMenuFor?.classList.remove("open"); stepMenuFor = null; }
+function openStepMenu(b, s, page = "main") {  // page: "main", or the beetles or hammers to pick from
+  stepMenuFor?.classList.remove("open"); stepMenuFor = b; b.classList.add("open");
+  const p = stepPicks(), smash = s.mode === "smash", task = data.console.task, beetle = p.sacrifice[s.label] || null, hammer = p.hammer[s.label] || null;
+  const item = (text, title, onclick, {on = false, disabled = false} = {}) => {
+    const i = el("button", {type: "button", className: "smi", title, disabled}, el("span", {textContent: text}), el("i", {textContent: on ? "✓" : ""}));
+    i.addEventListener("click", e => { e.stopPropagation(); onclick(i); });
+    return i;
+  };
+  const save = change => async i => {
+    i.disabled = true;
+    try {
+      data.settings = (await post("/api/step", {task, label: s.label, ...change})).settings;
+      closeStepMenu(); conSig = lcdSig = ""; render(false); refresh();
+    } catch (err) { i.disabled = false; i.firstChild.textContent = `COULDN'T SAVE (${err.message})`; }
+  };
+  const back = () => item("‹ BACK", "Back to this step's options", () => openStepMenu(b, s));
+  const auto = (what, title) => item("LET THE BOT CHOOSE", title, save({[what]: null}), {on: !(what === "sacrifice" ? beetle : hammer)});
+  let rows;
+  if (page === "beetle") {
+    rows = [el("div", {className: "smh", textContent: "SACRIFICE FOR THIS SMASH"}), back(),
+      auto("sacrifice", {green: "A Green Beetle (Crafting Beetles is set to Green)", purple: "A Purple Beetle (Crafting Beetles is set to Purple)"}[data.settings.sacrifice]
+        || "A Green Beetle, or a Purple one for a smash proven to be low odds"),
+      ...["green", "purple"].map(k => item(`${itemLabel(k).toUpperCase()} (${itemsByKey()[k]?.count || 0})`,
+        `Always sacrifice a ${itemLabel(k)} for this step (it waits while you have none)`, save({sacrifice: k}), {on: beetle === k}))];
+  } else if (page === "hammer") {
+    rows = [el("div", {className: "smh", textContent: "HAMMER FOR THIS SMASH"}), back(),
+      auto("hammer", "Your hammers in their order, each while it's under its limit"),
+      ...(data.game?.rack || []).map(h => item(`${h.name.toUpperCase()}${!h.owned ? "" : h.smash === false ? " · OFF" : ` · ${h.wear}%`}`,
+        !h.owned ? `You don't have a ${h.name}` : h.smash === false ? "Switched off for smashing under Set up hammers"
+          : `Smash this step with the ${h.name} only, while its break chance is under its limit (${h.limit}%)`,
+        save({hammer: h.key}), {on: hammer === h.key, disabled: hammer !== h.key && (!h.owned || h.smash === false)}))];
+  } else {
+    const first = p.first === s.label, skipped = p.skipped.includes(s.label);
+    rows = [
+      item(first ? "BACK IN ORDER" : "WORK NOW", first ? "Stop working on this step first" : "Work on this step first, with the steps it needs; the rest waits its turn",
+        save({first: !first})),
+      item(skipped ? "UNSKIP" : "SKIP STEP", skipped ? "Put this step back in its place in the plan" : "Do this step last: it waits until the rest of the plan is done (steps that need it wait with it)",
+        save({skip: !skipped})),
+      item(`CHOOSE BEETLE · ${beetle ? itemLabel(beetle).split(" ")[0].toUpperCase() : "AUTO"} ›`, smash ? "Which beetle this smash sacrifices" : "Only a smash sacrifices a beetle",
+        () => openStepMenu(b, s, "beetle"), {disabled: !smash}),
+      item(`CHOOSE HAMMER · ${hammer ? itemLabel(hammer).split(" ")[0].toUpperCase() : "AUTO"} ›`, smash ? "Which hammer this smash uses" : "Only a smash uses a hammer",
+        () => openStepMenu(b, s, "hammer"), {disabled: !smash}),
+    ];
+  }
+  stepMenu.replaceChildren(...rows);
+  stepMenu.hidden = false;
+  const at = b.getBoundingClientRect(), w = stepMenu.offsetWidth, h = stepMenu.offsetHeight;  // under the button, or above it where there's no room
+  stepMenu.style.left = `${Math.max(8, Math.min(at.right - w, innerWidth - w - 8))}px`;
+  stepMenu.style.top = `${innerHeight - at.bottom - 8 >= h ? at.bottom + 4 : Math.max(8, at.top - h - 4)}px`;
+}
+addEventListener("wheel", e => { if (!stepMenu.contains(e.target)) closeStepMenu(); }, {passive: true});  // (it stays put: scrolling leaves it behind)
+addEventListener("resize", closeStepMenu);
 
 /* Craft console: for the Auto make or quest, the crafts done, the one it does now and the rest of the plan */
 let conSig = "";
 function renderConsole(g) {
-  const c = data.console, sig = JSON.stringify([c, g.wait, data.settings.skipped, !!namePattern, !!book, data.log?.length]);
+  const c = data.console, sig = JSON.stringify([c, g.wait, data.settings.steps, !!namePattern, !!book, data.log?.length]);
   if (sig === conSig) return;
   conSig = sig;
-  const lines = [], ln = (cls, mark, parts) => {  // parts: text, or text and pictures; the console shows it in capitals
-    const d = el("div", {className: `ln ${cls}`}, el("b", {textContent: mark}), el("span", {}, ...[parts].flat()));
+  const lines = [], ln = (cls, mark, parts, num) => {  // parts: text, or text and pictures; the console shows it in capitals. num: a craft's number
+    // (the number first; lines without one keep its room, so the marks line up)
+    const d = el("div", {className: `ln ${cls}`}, el("i", {className: "sn", textContent: num || ""}), el("b", {textContent: mark}), el("span", {}, ...[parts].flat()));
     lines.push(d);
     return d;
   };
@@ -1920,26 +2091,27 @@ function renderConsole(g) {
     // A craft that broke its hammer says so (the log has it: the craft's own line, within seconds of it)
     const shattered = (data.log || []).filter(e => e.text.endsWith("The hammer shattered!"));
     const broke = (t, what) => shattered.some(e => Math.abs(e.ts - t) <= 15 && e.text.startsWith(`BeetleCraft: ${what}`));
-    for (const [t, what, made] of c.done) ln(made ? "ok" : "bad", made ? "✓" : "✗", [`${when(t)} `, ...withIcons(made ? `${what} → ${made}` : `${what}: smash failed`),
-      broke(t, what) ? el("span", {className: "brk", textContent: " · hammer shattered"}) : ""]);
+    let n = Math.max(0, c.count - c.done.length);  // every craft of the plan is numbered, from its first (the earlier ones too), then the steps to go
+    for (const [t, what, made, aim, source] of c.done) ln(made ? "ok" : "bad", made ? "✓" : "✗", [`${when(t)} `,
+      ...withIcons(made ? `${what} → ${made}` : aim ? `${what} → ${aim}: smash failed` : `${what}: smash failed`),
+      broke(t, what) ? el("span", {className: "brk", textContent: " · hammer shattered"}) : "", source === 2 ? waitingMark() : ""], ++n);
     if (!c.done.length) ln("ok", "·", "Nothing done yet");
-    here = c.now ? ln("now", "▶", ["Now: ", ...withIcons(`${c.now.what} → ${c.now.out}`), c.now.side ? " (Auto Junk Cubes)" : ""])
+    here = c.now ? ln("now", "▶", ["Now: ", ...withIcons(`${c.now.what} → ${c.now.out}`), c.now.side ? " (Auto Junk Cubes)" : "", c.now.waiting ? waitingMark() : ""], ++n)
       : c.paused ? ln("wait", "❚❚", "Paused: press ▶ play on its tab") : ln("wait", "…", craftStatus(g)[0]);
-    const next = nextStep(c), off = skippedSteps(), unskip = new Set();  // the next step, in yellow; skipped ones are done last
+    const next = nextStep(c);  // the next step, in yellow; ones with options picked, in blue
     for (const s of c.steps) {
       if (s.now) continue;  // shown above
-      if (s.unlock) { ln("", "○", "Unlock crafting slot 3 with the BeetleBoy Key"); continue; }
-      const skipped = off.has(s.label);
-      const d = ln(s === next ? "wait" : skipped ? "dim" : "", s === next ? "◐" : "○", [...stepParts(s), s.from.includes("wait") ? " · waiting on hunts" : "", skipped ? " · skipped: done last" : ""]);
-      if (s === next && !skipped) d.append(skipButton(s, true));
-      else if (skipped && !unskip.has(s.label)) { unskip.add(s.label); d.append(skipButton(s, false)); }  // (once for each: the same craft can come up again)
+      if (s.unlock) { ln("", "○", "Unlock crafting slot 3 with the BeetleBoy Key", ++n); continue; }
+      const d = ln(`${s === next ? "wait" : ""}${hasPicks(s) ? " picked" : ""}`, s === next ? "◐" : "○", [...stepParts(s), s.from.includes("wait") ? " · waiting on hunts" : "", stepNotes(s)], ++n);
+      d.append(optionsButton(s));
     }
     if (c.more) ln("dim", "…", `And ${c.more} more steps`);
-    if (!c.steps.length && !blocked && !c.paused) ln("", "✓", "Nothing else planned");
+    if (!c.steps.length && !c.paused) ln("", "✓", "Nothing else planned");
   }
   here.querySelector("span").append(el("i", {className: "cur", textContent: " _"}));
   const scr = $("lcon");
   scr.replaceChildren(...lines);
+  scr.style.setProperty("--numw", `${String(c ? c.count + c.steps.length + 1 : 1).length}ch`);  // (room for the biggest number, so they line up)
   const above = here.previousElementSibling;  // what it's doing now, under the last thing done
   scr.scrollTop = above ? Math.max(0, above.offsetTop - lines[0].offsetHeight) : 0;
 }
@@ -1965,23 +2137,16 @@ function renderHammers(g) {  // all five, in the order the bot uses them (the on
   hs.dataset.sig = sig; hs.replaceChildren();
   if (!owned.length) hs.append(el("div", {className: "note", textContent: "No hammers yet. The bot forges a Tin Hammer from two Junk Cubes."}));
   rack.forEach((h, n) => {
-    const wear = el("div", {className: "wear"}, el("span"), el("i"));
-    if (!h.owned) {
-      wear.lastChild.style.left = `${Math.min(100, h.limit)}%`;
-      hs.append(el("div", {className: "hammer none", title: `${h.name}: you don't have one`},
-        el("b", {className: "ord", textContent: n + 1}), tile({...h, count: null, category: 4}),
-        el("div", {}, el("div", {className: "note", textContent: `${h.name} · you don't have one`, style: "margin:0 0 4px"}), wear),
-        el("b", {textContent: "–", style: "text-align:right"})));
-      return;
-    }
-    wear.firstChild.style.width = `${Math.min(100, h.wear)}%`;
-    wear.firstChild.style.background = wearColor(h.wear, h.limit);
+    const wear = el("div", {className: "wear"}, el("span"), el("i")), off = h.smash === false;  // off: switched off for smashing, kept safe (it can still be upgraded)
     wear.lastChild.style.left = `${Math.min(100, h.limit)}%`;
-    const off = h.smash === false;  // switched off for smashing: kept safe (it can still be upgraded)
-    hs.append(el("div", {className: "hammer" + (off ? " off" : ""), title: off ? `${h.name}: switched off, the bot never smashes with it` : `${h.name}: break chance ${h.wear}%; smashes while it's under ${h.limit}%`},
+    if (h.owned) { wear.firstChild.style.width = `${Math.min(100, h.wear)}%`; wear.firstChild.style.background = wearColor(h.wear, h.limit); }
+    const [title, note] = !h.owned ? [`${h.name}: you don't have one`, `${h.name} · you don't have one`]
+      : off ? [`${h.name}: switched off, the bot never smashes with it`, `${h.name} · never smashed with`]
+      : [`${h.name}: break chance ${h.wear}%; smashes while it's under ${h.limit}%`, `${h.name} · break chance · limit ${h.limit}%`];
+    hs.append(el("div", {className: "hammer" + (!h.owned ? " none" : off ? " off" : ""), title},
       el("b", {className: "ord", textContent: n + 1}), tile({...h, count: null, category: 4}),
-      el("div", {}, el("div", {className: "note", textContent: off ? `${h.name} · never smashed with` : `${h.name} · break chance · limit ${h.limit}%`, style: "margin:0 0 4px"}), wear),
-      el("b", {textContent: `${h.wear}%`, style: "text-align:right"})));
+      el("div", {}, el("div", {className: "note", textContent: note, style: "margin:0 0 4px"}), wear),
+      el("b", {textContent: h.owned ? `${h.wear}%` : "–", style: "text-align:right"})));
   });
   if (t.smashes) {  // every smash in the history, the bot's and yours on RemiliaNET
     const broke = t.hammers_broken || 0;
@@ -2133,6 +2298,20 @@ document.addEventListener("click", async e => {
       setSwitch(action, !auto); b.title = `Couldn't save that (${err.message}). Try again.`;
     }
     b.disabled = false; render(false);
+    return;
+  }
+  const tri = e.target.closest(".tri button");
+  if (tri) {  // Crafting Beetles: Green, Auto or Purple
+    e.stopPropagation();
+    const beetle = tri.dataset.beetle, was = data.settings.sacrifice || "auto";
+    if (beetle === was) return;
+    data.settings.sacrifice = beetle; render(false);
+    try {
+      data.settings = (await post("/api/sacrifice", {beetle})).settings;
+    } catch (err) {
+      data.settings.sacrifice = was; tri.title = `Couldn't save that (${err.message}). Try again.`;
+    }
+    render(false);
     return;
   }
   const k = e.target.closest(".key.manual.ready");
@@ -2390,16 +2569,18 @@ function drawList(spec) {
   for (const [g, list] of groups) body.append(sec(heading(g), list.length, "item"), el("div", {className: "rec members"}, ...list.map(i => ingredient(i.key))));
   if (!items.length) body.append(el("div", {className: "empty", textContent: "Nothing here right now."}));
 }
-function drawGroup(gid) {  // everything that counts as "any ..." in a recipe, each clickable
+function drawGroup(gid) {  // everything that counts as "any ..." in a recipe, each clickable (also: ones that count in only some, shown not spent)
   const pinned = gid === "pinned", g = book.groups[pinned ? "beetle" : gid], keys = members(pinned ? "beetle" : gid), body = $("modalBody");
+  const also = Object.entries(g.also || {});
   const label = pinned ? "Pinned Beetle Trophy" : g.label, spec = pinned ? "trophy_green" : `@${gid}`;
   body.replaceChildren();
   winTitle("Group", label);
   body.append(el("h2", {textContent: label, style: "font:400 26px/1.1 Hei,monospace;margin:2px 0 8px"}),
     el("div", {className: "desc", textContent: pinned ? "Smash a Specimen Pin with any of these beetles to pin it to your shelf as a trophy. Holiday beetles never count: the bot won't spend them."
       : `A recipe that asks for “${label.toLowerCase()}” takes any of these, and one that makes it gives you a random one. Click one to see it.`}),
-    sec("What counts", keys.length, "item"),
-    el("div", {className: "rec members"}, ...keys.map(k => ingredient(k))));
+    sec("What counts", keys.length + also.length, "item"),
+    el("div", {className: "rec members"}, ...keys.map(k => ingredient(k)), ...also.map(([k]) => ingredient(k)),
+      ...also.map(([k, why]) => el("div", {className: "why", textContent: `${itemsByKey()[k]?.name || k}: ${why}`, style: "flex-basis:100%"}))));
   const made = book.recipes.filter(r => r.out.includes(spec)), used = pinned ? [] : book.recipes.filter(r => r.in.includes(spec));
   body.append(sec(pinned ? "How to make it" : "How to get one", made.length));
   body.append(...(made.length ? made.map(r => recipeRow(r, spec, pinned ? null : "make")) : [el("div", {className: "empty", textContent: "Hunts, claims and events bring these."})]));
@@ -2588,6 +2769,7 @@ for (const b of document.querySelectorAll(".fold")) {
   b.addEventListener("click", e => { e.stopPropagation(); setFold(b, !b.closest(".module").classList.contains("folded")); });
 }
 document.addEventListener("click", e => {
+  if (!e.target.closest(".stepmenu")) closeStepMenu();
   if (suppressClick || e.target.closest("#hammerDialog, #tipDialog, #toast")) return;
   if (!e.target.closest(".search")) closeSearch();
   if (!e.target.closest("#notif")) toggleNotes(false);
@@ -2607,6 +2789,7 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
+  if (!stepMenu.hidden) { closeStepMenu(); return; }
   if ($("notes").classList.contains("open")) { toggleNotes(false); return; }
   if ($("pdrop").classList.contains("open")) { toggleProfile(false); return; }
   if ($("tipDialog").classList.contains("open")) closeTip();
@@ -2902,11 +3085,13 @@ $("tabs").append(...TABS.map(([k, , en]) => {
 async function refresh() {
   try {
     data = await (await fetch("/api/status", {cache: "no-store"})).json(); fetchedAt = Date.now() / 1000;
-    if (bookRemoved !== undefined && data.recipes_removed !== bookRemoved) loadBook();
-    bookRemoved = data.recipes_removed; render();
   } catch (e) {
     $("dot").className = "status bad"; $("handle").textContent = "dashboard offline";
+    return;
   }
+  if (bookRemoved !== undefined && data.recipes_removed !== bookRemoved) loadBook();
+  bookRemoved = data.recipes_removed;
+  try { render(); } catch (e) { console.error("RemiDex: couldn't draw the page", e); }  // (a mistake in the page isn't the dashboard being offline)
 }
 refresh(); setInterval(() => render(false), 1000);
 // Live: the server says "changed" the moment anything shown here changes, and the page updates straight away. The timer is

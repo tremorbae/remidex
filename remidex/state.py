@@ -7,13 +7,11 @@ import urllib.request
 import quests
 import store
 from remidex.core import (
-    APP_DIR,
     DASH_DIR,
     GAME_FILE,
     ICONS_PER_RUN,
     LOG_FILE,
     PEOPLE_PICS,
-    STATE_FILE,
     USER_AGENT,
     VIEWS_KEPT,
     as_dict,
@@ -25,7 +23,6 @@ from remidex.settings import alert
 from remidex.recipes import note_outside_crafts
 
 
-FEED_FILE = APP_DIR / "feed.json"  # written only by --watch-feed
 LEVELS_FILE = DASH_DIR / "levels.json"  # the lowest and highest XP seen at each level, to learn how much XP a level takes
 ART_RETRY = 24 * 3600  # a picture the site doesn't have is asked for again only this often
 STREAK_WARN = 4 * 3600  # warn when today's daily cheese is still unclaimed this close to the end of the day (UTC)
@@ -43,10 +40,7 @@ def streak_watch(game):
         return  # already claimed today
     now = time.gmtime()
     left = 86400 - (now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)
-    try:
-        streak = store.streak()
-    except sqlite3.Error:
-        streak = None
+    streak = store.streak()
     if left > STREAK_WARN and not game.get("isStreakAtRisk"):
         return
     hours, minutes = divmod(left // 60, 60)
@@ -104,20 +98,6 @@ def keep_history():
         store.trim_log(LOG_FILE)
     except (sqlite3.Error, OSError) as e:
         log(f"History: couldn't read the log ({e}).")
-
-
-def move_to_store():
-    """The first time after an update: brings who was viewed and who the activity feed showed into the history database,
-    out of the state file and feed.json, where they were rewritten all the time."""
-    state = read_json(STATE_FILE)
-    try:
-        if store.migrate(state, read_json(FEED_FILE).get("seen")):
-            state.pop("viewed_at", None)
-            write_json(STATE_FILE, state)
-            FEED_FILE.unlink(missing_ok=True)
-            log("History: moved who you've viewed and the activity feed into the history database.")
-    except sqlite3.Error as e:
-        log(f"History: couldn't move them ({e}).")
 
 
 def cache_for_dashboard(site):

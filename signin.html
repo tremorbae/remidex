@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en" data-theme="color">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · RemiDex</title>
+<meta name="robots" content="noindex, nofollow">  <!-- it only runs on this computer: never list it anywhere -->
+<meta name="theme-color" content="#1C2788">
+<script>try { const t = JSON.parse(localStorage.getItem("theme")); if (["dark", "kawaii", "derp"].includes(t)) document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico">
+<style>
+  @font-face { font-family: Hei; src: url(/public/Hei.ttf) format("truetype"); font-display: swap; }
+  @font-face { font-family: RemiliaPixel; src: url(/public/RemiliaPixel.ttf) format("truetype"); font-display: swap; }
+
+  /* The dashboard's themes (see dashboard.html): "color" follows your profile hue. */
+  :root { --h: 204; --page: #eaeaea; --radius: 8px; --bw: 1.5px; --btn: #3b82c4; --btn-edge: #22598c; --btn-text: #fff; }
+  [data-theme=color] {
+    --accent: hsl(var(--h), 60%, 45%); --surface-1: hsl(var(--h), 80%, 95%); --surface-2: hsl(var(--h), 70%, 89%);
+    --border-light: hsl(var(--h), 50%, 75%); --text: #000c; --text-2: #0000008c; --chinese: hsl(var(--h), 65%, 38%); --col-bottom: hsl(var(--h), 55%, 52%);
+  }
+  [data-theme=dark] {
+    color-scheme: dark; --page: #1a1a1a; --accent: #9b9b9b; --surface-1: #303030; --surface-2: #181818; --border-light: #555;
+    --text: #bababa; --text-2: #a3a3a3; --chinese: #d0d0d0; --col-bottom: #000;
+  }
+  [data-theme=kawaii] {
+    --radius: 14px; --bw: 2px; --page: #ffe6f2; --accent: #ff5fa8; --surface-1: #fff4f9; --surface-2: #ffe1ef;
+    --border-light: #ffb0d3; --text: #5a2547; --text-2: #5a254799; --chinese: #e8509a; --col-bottom: #ff8fc2; --btn: #ff5fa8; --btn-edge: #c2407f;
+  }
+  [data-theme=derp] {
+    --radius: 4px; --bw: 1px; --page: #e3fde6; --accent: #001fe9; --surface-1: #f2fff4; --surface-2: #e3fde6;
+    --border-light: #bdbdcc; --text: #0a0d0b; --text-2: #58685d; --chinese: #001fe9; --col-bottom: #bdbdcc; --btn: #001fe9; --btn-edge: #001fe9; --btn-text: #e3fde6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.4 Hei, ui-monospace, Menlo, monospace; }
+  body { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
+  [hidden] { display: none !important; }
+
+  .card { width: min(380px, 100%); border: var(--bw) solid var(--border-light); border-radius: var(--radius); overflow: hidden; background: var(--surface-1);
+    box-shadow: 0 10px 3px #0003, 0 4px 0 var(--col-bottom); }
+  .header { display: flex; align-items: center; height: 36px; padding: 0 .75rem; background: var(--surface-2); border-bottom: var(--bw) solid var(--border-light); }
+  .header span:first-child { color: var(--chinese); font-size: .95rem; margin-right: .3rem; }
+  .header span:last-child { font-size: .85rem; }
+  form { display: flex; flex-direction: column; gap: 14px; padding: 22px 22px 18px; margin: 0; }
+  .logo { display: block; width: 180px; height: auto; margin: 2px auto 0; }
+  .lead { margin: 0 0 4px; text-align: center; font-size: 12px; color: var(--text-2); }
+  label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-2); }
+  input { width: 100%; height: 42px; padding: 0 12px; border-radius: 4px; border: 1px solid #c9c9c9; outline: none; color: #222;
+    background: linear-gradient(#fff, #f3f3f3); font: 14px/1 Hei, ui-monospace, Menlo, monospace; box-shadow: inset 0 1px 3px #0002; }
+  input:focus { border-color: var(--accent); box-shadow: inset 0 1px 3px #0002, 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+  input:disabled { opacity: .6; }
+  [data-theme=dark] input { background: linear-gradient(#3a3a3a, #2c2c2c); border-color: #4a4a4a; color: #ddd; box-shadow: inset 0 1px 3px #0006; }
+  [data-theme=kawaii] input { border-color: #ffb0d3; color: #5a2547; border-radius: 12px; }
+  #code { height: 52px; text-align: center; font-size: 26px; letter-spacing: .35em; padding-left: calc(12px + .35em); font-variant-numeric: tabular-nums; }
+  #code::placeholder { color: #9996; letter-spacing: .35em; }
+  button { height: 44px; margin-top: 4px; border: 0; border-radius: 4px; cursor: pointer; color: var(--btn-text); background: var(--btn); box-shadow: 0 3px 0 var(--btn-edge);
+    font: 15px/1 RemiliaPixel, Hei, monospace; letter-spacing: .08em; }
+  button:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--btn-edge); }
+  button:disabled { opacity: .7; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  [data-theme=kawaii] button { border-radius: 12px; }
+  [data-theme=derp] button { border-radius: 99px; box-shadow: none; }
+  button.plain { height: auto; margin: -4px auto 0; padding: 4px 8px; background: none; box-shadow: none; color: var(--text-2); font: 12px/1.2 Hei, ui-monospace, Menlo, monospace;
+    letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; }
+  button.plain:active:not(:disabled) { transform: none; box-shadow: none; }
+  .spin { display: none; width: 13px; height: 13px; margin-right: 8px; vertical-align: -2px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+    animation: spin .8s linear infinite; }
+  .working .spin { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
+  .note { margin: 0; min-height: 2.8em; text-align: center; font-size: 12px; color: var(--text-2); }
+  .note.bad { color: #c03a3a; } [data-theme=dark] .note.bad { color: #ff8a80; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="header"><span>登录</span><span>Sign in</span></div>
+    <form id="form" autocomplete="on">
+      <img class="logo" src="/logo.svg" alt="RemiDex" width="150" height="40">
+      <p class="lead">Sign in with your RemiliaNET account to start the bot.</p>
+      <label>Email<input id="email" name="username" type="text" inputmode="email" autocomplete="username" spellcheck="false" autocapitalize="off" required autofocus></label>
+      <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+      <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span id="goText">SIGN IN</span></button>
+      <p class="note" id="note" role="status" aria-live="polite"></p>
+    </form>
+    <form id="codeForm" autocomplete="off" hidden>
+      <img class="logo" src="/logo.svg" alt="RemiDex" width="150" height="40">
+      <p class="lead">Two-factor: type the code from your authenticator app.</p>
+      <label>Code<input id="code" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="······" required></label>
+      <button id="verify" type="submit"><span class="spin" aria-hidden="true"></span><span id="verifyText">VERIFY</span></button>
+      <p class="note" id="codeNote" role="status" aria-live="polite"></p>
+      <button class="plain" id="restart" type="button">Start over</button>
+    </form>
+  </main>
+<script>
+const $ = id => document.getElementById(id);
+const KEY = "remidexSignIn";  // which sign-in this tab started: a page only shows its own sign-in's errors
+const mine = () => { try { return sessionStorage.getItem(KEY); } catch { return null; } };
+const remember = attempt => { try { attempt == null ? sessionStorage.removeItem(KEY) : sessionStorage.setItem(KEY, String(attempt)); } catch {} };
+let state = {}, timer = 0, sending = false, stopping = false, ownError = null, asked = null, lastError = null;  // asked: the code step shown last
+
+function show(s) {  // how it's going (GET /api/sign-in): {signed_in, running, step, error, attempt, hue}
+  state = s;
+  if (s.signed_in) { remember(null); location.replace("/"); return; }  // signed in: on to the dashboard
+  if (typeof s.hue === "number") document.documentElement.style.setProperty("--h", s.hue);
+  if (!s.running) stopping = false;
+  const codeStep = s.running && !stopping && (s.step === "code" || s.step === "checking");
+  if (asked && !codeStep) ownError = null;  // (what the code box said doesn't carry over)
+  $("form").hidden = codeStep; $("codeForm").hidden = !codeStep;
+  if (codeStep) {
+    const checking = s.step === "checking" || sending;
+    $("code").disabled = $("verify").disabled = $("restart").disabled = checking;
+    $("verify").classList.toggle("working", checking);
+    $("verifyText").textContent = checking ? "CHECKING…" : "VERIFY";
+    $("codeNote").textContent = checking ? "Checking the code with RemiliaNET."
+      : ownError || (s.error ? `That code didn't work: ${s.error}.` : "The code changes every 30 seconds: type the one showing now.");
+    $("codeNote").classList.toggle("bad", !checking && !!(ownError || s.error));
+    if (s.step === "code" && asked !== "code") { $("code").value = ""; $("code").focus(); }  // a new question: the first, or after a wrong code
+    asked = s.step;
+    return;
+  }
+  asked = null;
+  const working = (s.running || sending) && !stopping, ours = s.attempt != null && String(s.attempt) === mine();
+  const error = working || stopping ? null : ownError || (ours ? s.error : null);
+  $("go").disabled = $("email").disabled = $("password").disabled = working || stopping;
+  $("go").classList.toggle("working", working || stopping);
+  $("goText").textContent = stopping ? "STOPPING…" : working ? "SIGNING IN…" : "SIGN IN";
+  $("note").textContent = stopping ? "Stopping the last sign-in." : working ? "Signing in to RemiliaNET. This takes about half a minute."
+    : error ? `Didn't sign in: ${error}.` : "Your password goes straight to RemiliaNET. RemiDex doesn't save it.";
+  $("note").classList.toggle("bad", !!error);
+  if (error && error !== lastError && !$("password").value) $("password").focus();  // (once, as it appears)
+  lastError = error;
+}
+
+async function check() {  // asks how it's going: often while signing in, now and then otherwise (a sign-in elsewhere counts too)
+  clearTimeout(timer);
+  try { show(await (await fetch("/api/sign-in", {cache: "no-store"})).json()); } catch {}
+  timer = setTimeout(check, state.running ? 1500 : 5000);
+}
+
+async function send(path, body) {
+  const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(r.status === 409 ? "busy" : `HTTP ${r.status}`);
+  return r.json();
+}
+const sendError = err => err.message === "Failed to fetch" ? "RemiDex isn't answering. Is it running?" : `RemiDex didn't take it (${err.message})`;
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const email = $("email").value.trim(), password = $("password").value;
+  if (sending || state.running || !email || !password) return;
+  ownError = null; sending = true; show(state);
+  try {
+    remember((await send("/api/sign-in", {email, password})).attempt);
+    $("password").value = "";
+  } catch (err) {
+    if (err.message !== "busy") ownError = sendError(err);  // (busy: signed in already, or one's under way: check says which)
+  }
+  sending = false; check();
+};
+
+$("codeForm").onsubmit = async e => {
+  e.preventDefault();
+  const code = $("code").value.replace(/[\s-]/g, "");
+  if (sending) return;
+  ownError = /^\d{4,10}$/.test(code) ? null : "Type the code's digits.";
+  if (ownError) { show(state); return; }
+  sending = true; show(state);
+  try { await send("/api/sign-in/code", {code}); } catch (err) { if (err.message !== "busy") ownError = sendError(err); }
+  sending = false; check();
+};
+
+$("restart").onclick = async () => {
+  remember(null); ownError = null; stopping = true; show(state);
+  try { await send("/api/sign-in/stop", {}); } catch {}
+  check();
+};
+check();
+</script>
+</body>
+</html>

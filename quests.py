@@ -6,7 +6,7 @@ broken hammers, views of your profile, the cheese streak), which start from when
 what it took (the dashboard remembers that in its own file).
 """
 
-from remidex.core import HAMMERS
+from remidex.core import HAMMERS, fits_match
 
 POLLENS = ["pollen_common", "pollen_uncommon", "pollen_rare", "pollen_super_rare"]
 ARTIFACTS = ["nectar", "cattail", "pinecone", "moss", "gunpowder"]
@@ -163,7 +163,7 @@ QUESTS = [
     ("甲虫 Beetles", "ladybug", "Lucky Ladybug", "Catch a Ladybug in a hunt or a free claim.", "ladybug", found("ladybug")),
     ("甲虫 Beetles", "purple", "Purple Reign", "Catch a Purple Beetle in a hunt or a free claim.", "purple", found("purple")),
     ("甲虫 Beetles", "cucumber", "Cool as a Cucumber", "Catch a Striped Cucumber Beetle in a hunt or a free claim.", "cucumber", found("cucumber")),
-    ("甲虫 Beetles", "bumblebee", "Buzz", "Catch a Bumble Bee: a rare catch from hunts and free claims.", "bumblebee", found("bumblebee")),
+    ("甲虫 Beetles", "bumblebee", "Buzz", "Catch a Bumblebee: a rare catch from hunts and free claims.", "bumblebee", found("bumblebee")),
     ("甲虫 Beetles", "harlequin", "Jester", "Catch a Harlequin Beetle: a rare catch from hunts and free claims.", "harlequin", found("harlequin")),
     ("甲虫 Beetles", "monarch", "Monarchy", "Smash Nectar with a Ladybug for a Monarch.", "monarch", found("monarch")),
     ("甲虫 Beetles", "pond", "Pond Life", "Smash Cattail with a Ladybug for a Pond Beetle.", "pond", found("pond")),
@@ -441,7 +441,8 @@ GUIDES = {
     "beetles_500": [HUNTS], "beetles_1000": [HUNTS], "beetles_2500": [HUNTS],
     "species_all": [HUNTS, *ADAMANTINE_ROUTE, ("Craft the flower species (see each one's quest).", None),
                     ("The holiday beetles only come during the Halloween and December events.", None)],
-    **{k: [HUNTS, ("It can't be crafted: it only comes from hunts and free claims.", None)] for k in ("ladybug", "purple", "cucumber", "bumblebee", "harlequin")},
+    **{k: [HUNTS, ("It mostly comes from hunts and free claims. A tier-up smash (two beetles of the tier below) gives a random beetle of "
+                   "the next tier, so one may turn up there too, but you can't aim for it.", None)] for k in ("ladybug", "purple", "cucumber", "bumblebee", "harlequin")},
     "monarch": [HUNTS, CUBES, HAMMER, BRONZE_FLOWER, BRONZE_POLLEN, ("Smash a Ladybug with Bronze Pollen until Nectar comes out.", "nectar"),
                 ("Smash the Nectar with a Ladybug.", "monarch")],
     "pond": [HUNTS, CUBES, HAMMER, BRONZE_FLOWER, BRONZE_POLLEN, ("Smash a Ladybug with Bronze Pollen until a Cattail comes out.", "cattail"),
@@ -570,9 +571,7 @@ def resolve_group(gid, book, items):
     g = book["groups"][gid]
     if "keys" in g:
         return list(g["keys"])
-    m = g["match"]
-    return [i["key"] for i in items if i["category"] == m["category"] and (m.get("tier") is None or i["tier"] == m["tier"])
-            and i["key"] not in m.get("exclude", []) and not (m.get("exclude_prefix") and i["key"].startswith(m["exclude_prefix"])) and not i.get("season")]
+    return [i["key"] for i in items if fits_match(g["match"], i["key"], i["category"], i["tier"]) and not i.get("season")]
 
 
 def craftable(book, items, game):

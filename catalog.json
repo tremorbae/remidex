@@ -52,6 +52,13 @@
    "latin": "Megasoma mars",
    "card": "icons/_card/mars_rhino.webp"
   },
+  "whipscorpion": {
+   "name": "Tailless Whipscorpion",
+   "category": 2,
+   "tier": 6,
+   "desc": "Tailless whipscorpion",
+   "latin": "Heterophrynus longicornis"
+  },
   "death_feigning": {
    "name": "Blue Death Feigning Beetle",
    "category": 2,
@@ -126,7 +133,7 @@
    "bg": "https://wiki.remilia.org/images/d/d3/Beetleboy_Sunset_Moth_Background.webp"
   },
   "blue_longicorn": {
-   "name": "Blue Longicorn Beetle",
+   "name": "Black-Spotted Blue Longicorn",
    "category": 2,
    "tier": 4,
    "art": "icons/beetles/blue_longicorn.png",
@@ -136,7 +143,7 @@
    "card_bg": "icons/_bg/blue_longicorn.webp"
   },
   "bumblebee": {
-   "name": "Bumble Bee",
+   "name": "Bumblebee",
    "category": 2,
    "tier": 4,
    "art": "icons/beetles/bumblebee.png",
@@ -1022,7 +1029,9 @@
    "category": 6,
    "tier": 5,
    "art": "icons/artifacts/gunpowder.png",
-   "card": "icons/artifacts/gunpowder.webp"
+   "card": "icons/artifacts/gunpowder.webp",
+   "desc": "Volatile black powder",
+   "latin": "Pulvis pyrius"
   },
   "moss": {
    "name": "Moss",
@@ -1038,7 +1047,9 @@
    "category": 6,
    "tier": 5,
    "art": "icons/artifacts/pinecone.png",
-   "card": "icons/artifacts/pinecone.png"
+   "card": "icons/artifacts/pinecone.png",
+   "desc": "Coniferous seed pod",
+   "latin": "Conus pinus"
   },
   "cattail": {
    "name": "Cattail",
@@ -1064,7 +1075,7 @@
    "tier": 2,
    "art": "icons/unique/beetleboy_key.png",
    "desc": "Once shiny and chrome",
-   "latin": "Slotus reserus",
+   "latin": "Slotus Reserus",
    "card": "icons/_card/beetleboy_key.webp"
   },
   "arrowhead": {
@@ -1087,7 +1098,8 @@
    "tier": 2,
    "art": "icons/trophy-items/chinese_coin.png",
    "card": "icons/trophy-items/chinese_coin.png",
-   "desc": "Final circulating treasure"
+   "desc": "Final circulating treasure",
+   "latin": "Nummus Chinensis"
   },
   "compass": {
    "name": "Compass",
@@ -1234,7 +1246,9 @@
    "category": 9,
    "tier": 7,
    "art": "icons/trophies/trophy_chinese_coin.webp",
-   "card": "icons/trophies/trophy_chinese_coin.webp"
+   "card": "icons/trophies/trophy_chinese_coin.webp",
+   "desc": "Final circulating treasure",
+   "latin": "Nummus Chinensis"
   },
   "trophy_compass": {
    "name": "Compass Trophy",
@@ -1248,7 +1262,9 @@
    "category": 9,
    "tier": 7,
    "art": "icons/trophies/trophy_d20.webp",
-   "card": "icons/trophies/trophy_d20.webp"
+   "card": "icons/trophies/trophy_d20.webp",
+   "desc": "Now watch this natural",
+   "latin": "Sors gygaxiana"
   },
   "trophy_deck_of_cards": {
    "name": "Deck of Cards Trophy",
@@ -1311,7 +1327,9 @@
    "category": 9,
    "tier": 7,
    "art": "icons/trophies/trophy_oriental_fan.webp",
-   "card": "icons/trophies/trophy_oriental_fan.webp"
+   "card": "icons/trophies/trophy_oriental_fan.webp",
+   "desc": "Putting on airs",
+   "latin": "Flabellum orientale"
   },
   "trophy_police_badge": {
    "name": "Police Badge Trophy",

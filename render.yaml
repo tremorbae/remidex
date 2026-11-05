@@ -1,0 +1,12 @@
+# Render Blueprint for the RemiDex server check (hosted/check.py, built by the Dockerfile).
+# Render asks for CHECK_PASSWORD when you create it: the check page asks for that password before anything else.
+services:
+  - type: web
+    name: remidex-check
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: CHECK_PASSWORD
+        sync: false

@@ -21,7 +21,7 @@ STATE_FILE = APP_DIR / "state.json"
 OVERRIDES_FILE = APP_DIR / "overrides.json"  # the switches, picks and hammer limits set on the dashboard
 GAME_FILE = APP_DIR / "game.json"  # the last BeetleBoy state and cards seen, for the dashboard
 FEED_US_FILE = APP_DIR / "feed_us.json"  # live news about you from the activity feed (written by --watch-feed)
-LOGIN_HELP = "To sign in again, paste the RemiDex install line again (see its README)"
+LOGIN_HELP = "To sign in again, open RemiDex (http://remidex.localhost:8642)"
 DASH_DIR = APP_DIR / "dashboard"  # your theme, profile picture and item icons, for the dashboard
 PEOPLE_PICS = DASH_DIR / "viewers"  # profile pictures for the dashboard's activity: who viewed you, and who was poked
 ICONS_PER_RUN = 25  # item icons fetched per run, so a big inventory fills in over a few runs
@@ -61,7 +61,7 @@ def note_health(status):
 
 
 class NeedsLogin(Exception):
-    """Something only a new --login can solve; scheduled runs pause."""
+    """Something only a new sign-in can solve; scheduled runs pause."""
 
 
 def log(message):
@@ -185,3 +185,11 @@ def changed(path):
 
 QUEUE_MAX = 9  # Auto makes and quests that can wait in line on the dashboard
 JUNK_CUBE_CRAFT = "junk_cube_t1 from @junk + @junk"
+TIN_HAMMER_CRAFT = "hammer_t1 from junk_cube_t1 + junk_cube_t1"
+
+
+def fits_match(m, key, category, tier):
+    """Whether an item fits a recipe-book group's "match" rule: its category, its tier (if the rule has one), and not one
+    the rule leaves out. Seasonal items are left to the caller."""
+    return (category == m["category"] and (m.get("tier") is None or tier == m["tier"])
+            and key not in m.get("exclude", []) and not (m.get("exclude_prefix") and key.startswith(m["exclude_prefix"])))

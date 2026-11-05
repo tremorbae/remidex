@@ -12,7 +12,6 @@ import support
 pb = support.load()
 ok = support.Checks()
 import dashboard  # noqa: E402
-from remidex import chat  # noqa: E402
 
 tmp = Path(tempfile.mkdtemp())
 support.patch(CHAT_OUT_FILE=tmp / "chat_out.json", CHAT_FILES=tmp / "chat_files", CHAT_FILE=tmp / "chat.json", LOOKING_FILE=tmp / "looking.json",

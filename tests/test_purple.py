@@ -45,6 +45,19 @@ ok(pb.pick_sacrifice(bag({"purple": 1, "green": 1}), moss, pb.SMASH, ["purple", 
 ok(pb.pick_sacrifice(bag({"green": 2, "purple": 2}), moss, pb.SMASH, ["pond", "pollen_rare"], purple=False) == "green", "switched off after a refusal: Green")
 ok(pb.pick_sacrifice(bag({"purple": 2}), moss, pb.ASSEMBLE, ["a", "b"]) == "", "an assemble sacrifices nothing")
 
+# ---- Crafting Beetles in Analytics: Green or Purple for every smash, unless a step picks its own
+two = bag({"green": 2, "purple": 2})
+ok(pb.pick_sacrifice(two, moss, pb.SMASH, ["pond", "pollen_rare"], beetle="green") == "green", "set to Green: a Green one, even for a proven low-odds smash")
+ok(pb.pick_sacrifice(two, easy, pb.SMASH, ["nectar", "ladybug"], beetle="purple") == "purple", "set to Purple: a Purple one, even for an easy smash")
+ok(pb.pick_sacrifice(bag({"green": 2}), easy, pb.SMASH, ["nectar", "ladybug"], beetle="purple") is None, "with no Purple one it waits rather than spend a Green one")
+ok(pb.pick_sacrifice(bag({"purple": 1}), easy, pb.SMASH, ["purple", "pollen_uncommon"], beetle="purple") is None, "never the Purple Beetle the craft itself uses")
+ok(pb.pick_sacrifice(two, easy, pb.SMASH, ["nectar", "ladybug"], picked="green", beetle="purple") == "green", "a step's own pick wins")
+ok(pb.pick_sacrifice(two, moss, pb.SMASH, ["pond", "pollen_rare"], beetle="auto") == "purple", "Auto: as before")
+seen = []
+for saved in ({"sacrifice": "purple"}, {"sacrifice": "green"}, {"sacrifice": "red"}, {}):
+    pb.write_json(pb.OVERRIDES_FILE, saved); seen.append(pb.load_settings()["sacrifice"])
+ok(seen == ["purple", "green", "auto", "auto"], f"read back from what the dashboard saved, Auto unless it's Green or Purple ({seen})")
+
 
 # ---- the bot sends it, says it, and a refusal can't stall crafting
 class Site:
@@ -70,7 +83,7 @@ class Site:
 
 
 settings = {"junk_cubes": False, "goal": None, "goal_again": False, "goal_paused": False, "goal_set_at": None, "locked": [],
-            "make": {"keys": ["moss"], "recipe": None, "set_at": 1.0, "start": 0, "paused": False}, "skipped": None,
+            "make": {"keys": ["moss"], "recipe": None, "set_at": 1.0, "start": 0, "paused": False}, "steps": None,
             "hammer_order": ["hammer_t1"], "hammer_limits": {"hammer_t1": 95}, "max_break_chance": 25, "hammer_timing": False}
 proven(3, 0)
 site, state = Site("UNLUCKY_ROLL"), {"handle": "me"}
@@ -95,4 +108,15 @@ site.status = 200
 state["craft_check_at"] = 0
 pb.beetlecraft(site, state, False, settings)
 ok(site.sent[1:3] == ["green", "green"], f"and crafting carries on with Green ones ({site.sent})")
+
+# ---- the plan keeps one of the beetle its smashes sacrifice: with Purple, the last Green Beetle can go in a recipe
+tin = [{"hammer": "hammer_t1", "break_rate": 0, "base_break_rate": 0, "craft_count": 0}]
+last_green = pb.Bag({"inventory": {"green": 1, "junk_cube_t1": 1, "purple": 1, "hammer_t1": 1}, "crafting_slot3_unlocked": True, "hammers": tin}, cards)
+flower = {**settings, "make": {"keys": ["@flower_2"], "recipe": None, "set_at": 1.0, "start": 0, "paused": False}}
+ok(pb.next_craft(last_green, True, {**flower, "sacrifice": "auto"}, {}) is None, "Auto: the last Green Beetle is kept to sacrifice, so it waits")
+step = pb.next_craft(last_green, True, {**flower, "sacrifice": "purple"}, {})
+ok(step and step[2] == ["green", "junk_cube_t1"] and step[4] == "purple", f"Purple: the Green Beetle goes in the recipe, a Purple one is sacrificed ({step})")
+plan = pb.plan_make(last_green, True, flower["make"], book, catalog, sacrifice="purple")
+ok(plan.sacrifice == "purple" and pb.sacrifice_kept({"sacrifice": "purple"}) == "purple" and pb.sacrifice_kept({"sacrifice": "auto"}) == "green",
+   "the planners keep a Purple one only while it's set to Purple")
 ok.done()

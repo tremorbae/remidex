@@ -24,7 +24,7 @@ LOG="$HOME/Library/Logs/remilianet-poke-browser.log"
 DASH_LOG="$HOME/Library/Logs/remilianet-dashboard.log"
 PLAYWRIGHT_VERSION=1.60.0  # the last release that runs on macOS's built-in Python 3.9
 PORT=8642
-FILES=(poke_browser.py store.py dashboard.py dashboard.html catalog.json recipes.json quests.py)  # what gets copied to $APP_DIR
+FILES=(poke_browser.py store.py dashboard.py dashboard.html signin.html catalog.json recipes.json quests.py)  # what gets copied to $APP_DIR
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LAUNCHCTL="${LAUNCHCTL:-launchctl}"  # a test can swap this for `true`, so nothing real is started or stopped
 
@@ -139,13 +139,11 @@ if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then
 fi
 "$APP_DIR/venv/bin/pip" install --quiet --disable-pip-version-check "playwright==$PLAYWRIGHT_VERSION"
 for f in "${FILES[@]}"; do cp "$HERE/$f" "$APP_DIR/$f"; done
-rm -f "$APP_DIR/settings.ini"  # (older versions had one; everything it held is on the dashboard now)
 rm -rf "$APP_DIR/remidex" && mkdir "$APP_DIR/remidex" && cp "$HERE"/remidex/*.py "$APP_DIR/remidex/"  # the bot's parts
 
-# Sign in: the first time, and whenever RemiDex has been signed out (so running this again is how you sign back in).
-if [[ $FRESH == 1 ]] || grep -q '"needs_login": true' "$APP_DIR/state.json" 2>/dev/null; then
-  "$APP_DIR/venv/bin/python" "$APP_DIR/poke_browser.py" --login
-fi
+# Signing in happens on RemiDex's own sign-in page (opened at the end): the first time, and whenever it's been signed out.
+SIGN_IN=0
+if [[ $FRESH == 1 ]] || grep -q '"needs_login": true' "$APP_DIR/state.json" 2>/dev/null; then SIGN_IN=1; fi
 
 # write_plist PATH LABEL SCRIPT FLAG LOGFILE: an always-on job running SCRIPT FLAG.
 write_plist() {
@@ -196,10 +194,12 @@ fi
 if [[ $FRESH == 1 ]]; then
   echo
   echo "Done. RemiDex is running: http://remidex.localhost:$PORT"
-  echo "Everything is OFF until you switch it on there."
+  echo "Sign in there with your RemiliaNET account. Everything is OFF until you switch it on."
   echo "macOS may say a background item was added: that's RemiDex (System Settings > General > Login Items)."
   echo "To stop and remove it: ./install_browser.sh --uninstall"
-  if [[ "$LAUNCHCTL" == "launchctl" ]]; then open "http://remidex.localhost:$PORT" || true; fi
+elif [[ $SIGN_IN == 1 ]]; then
+  echo "Updated. Sign in to RemiDex: http://remidex.localhost:$PORT"
 else
   echo "Updated. RemiDex: http://remidex.localhost:$PORT   (log: $LOG)"
 fi
+if [[ $SIGN_IN == 1 && "$LAUNCHCTL" == "launchctl" ]]; then open "http://remidex.localhost:$PORT" || true; fi

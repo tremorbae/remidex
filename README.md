@@ -16,7 +16,7 @@ Plays BeetleBoy and BeetleCraft on RemiliaNET for you.
 irm https://raw.githubusercontent.com/tremorbae/Remidex/main/get.ps1 | iex
 ```
 
-Then type `y`, and log in to RemiliaNET in the Chrome window that opens.
+Then type `y`, and sign in with your RemiliaNET account on the RemiDex page that opens.
 
 Your dashboard is at **http://remidex.localhost:8642**
 

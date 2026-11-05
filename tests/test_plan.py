@@ -1,5 +1,5 @@
-"""An Auto make keeps its own record of crafts: picking it again carries on, and the crafts from before (kept in the log) are
-put back once (made-up log and state, temp files)."""
+"""An Auto make keeps its own record of crafts: picking it again carries on, and a finished one's record is put away
+(made-up state, temp files)."""
 import tempfile
 import time
 from pathlib import Path
@@ -29,33 +29,8 @@ ok(pb.task_record(state, task)["count"] == 2 and pb.task_record(state, "goal que
 for n in range(pb.TASK_LOGS_KEPT + 2):
     pb.note_craft(state, f"goal other {n}", "x", "Assemble G + H", cube)
 ok(len(state["task_logs"]) == pb.TASK_LOGS_KEPT and task not in state["task_logs"], "the least recently worked on records go first")
-ok(pb.made_count({"done": [[1, "a", "X"], [2, "b", None]]}) == 1, "an older record's steps done are counted from its crafts")
-
-# ---- the rebuild
-when = clock("2026-10-18 20:23:00")
-make = {**make, "set_at": when}
-settings = {"make": make, "goal": None}
-pb.LOG_FILE.write_text("\n".join([
-    "2026-10-17 21:00:00 BeetleCraft: Assemble Old + Old -> Before.",
-    "2026-10-17 22:55:59 BeetleCraft: Auto make is done (Tin Hammer). Next one from the queue.",
-    "2026-10-17 23:10:00 BeetleCraft: Assemble Glue Stick + Pebble -> Junk Cube.",
-    "2026-10-17 23:10:09 BeetleCraft: Smash Monarch + Junk Cube: smash failed (sacrificing a Green Beetle; Tin Hammer at 5% break chance); the Green Beetle is gone, the rest came back.",
-    "2026-10-17 23:10:15 BeetleCraft: Smash Nectar + Ladybug -> Monarch (sacrificing a Green Beetle; Tin Hammer at 10% break chance).",
-    "2026-10-17 23:11:00 BeetleCraft: Assemble Hand + Made -> Thing (by you, on RemiliaNET).",
-    "2026-10-17 23:12:00 BeetleCraft: verified a recipe: Assemble X -> Y.",
-    "2026-10-17 23:13:00 Hunt: Green Beetle (+5 XP). 100 cheese left.",
-    "2026-10-18 21:00:00 BeetleCraft: Assemble After + After -> Later.",
-]) + "\n")
-old = "make mars_rhino@0"
-state = {"task_log": {"task": f"make {when}", "count": 1, "done": [[when + 3000, "Smash Daisy + Daisy", "Wort"]]}}
-ok(pb.rebuild_task_log(state, settings) is True, "an Auto make with an old-style record is rebuilt")
-rec = pb.task_record(state, old)
-ok([e[1:] for e in rec["done"]] == [["Assemble Glue Stick + Pebble", "Junk Cube"], ["Smash Monarch + Junk Cube", None], ["Smash Nectar + Ladybug", "Monarch"], ["Smash Daisy + Daisy", "Wort"]],
-   f"crafts since the last Auto make finished are back, then the ones it already had ({[e[1:] for e in rec['done']]})")
-ok(rec["count"] == 4 and pb.made_count(rec) == 3, f"counted: {rec['count']} crafts, {pb.made_count(rec)} steps")
-ok("task_log" not in state and f"make {when}" not in state["task_logs"], "the old record is gone")
-ok(pb.rebuild_task_log(state, settings) is False, "and it isn't done twice")
-ok(pb.rebuild_task_log({}, settings) is False and pb.rebuild_task_log(state, {"make": None}) is False, "nothing to rebuild: nothing happens")
+pb.note_craft(state, "goal aims", "x", "Smash Pond Beetle + Mithril Pollen", None, "Pinecone", 2)
+ok(pb.task_record(state, "goal aims")["done"][-1][1:] == ["Smash Pond Beetle + Mithril Pollen", None, "Pinecone", 2], "a craft keeps what it was aiming for, and that it was made for a waiting step")
 
 # ---- a Tin Hammer made, then broken, then made again: each Auto make shows only its own crafts
 from remidex import recipes  # noqa: E402
@@ -72,17 +47,6 @@ ok(not pb.task_record(state, task) and pb.task_record(state, pb.finished_key(tas
 again = {**hammer, "set_at": clock("2026-10-22 05:33:00")}  # (it broke: 0 held again, so the same id)
 pb.note_craft(state, pb.task_id("make", {"make": again}), "x", "Assemble Junk Cube + Junk Cube", None)
 ok(pb.task_record(state, task)["count"] == 1, "the next Tin Hammer starts afresh")
-# a record from before they were put away: the clean-up at the start drops what came before the log said it was done
-pb.LOG_FILE.write_text("2026-10-22 00:32:23 BeetleCraft: Assemble Junk Cube + Junk Cube -> Tin Hammer.\n"
-                       "2026-10-22 00:32:23 BeetleCraft: Auto make is done (Tin Hammer). Next one from the queue.\n")
-state = {"task_logs": {task: {"task": task, "count": 3, "made": 2, "done": [[clock("2026-10-21 03:42:00"), "Assemble Junk Cube + Junk Cube", "Tin Hammer"],
-                                                                           [clock("2026-10-22 00:32:23") + .4, "Assemble Junk Cube + Junk Cube", "Tin Hammer"],
-                                                                           [clock("2026-10-22 06:00:00"), "Assemble Loose + Junk", "Junk Cube"]]}}}
-ok(recipes.forget_finished(state, {"make": again}) is True and [d[2] for d in pb.task_record(state, task)["done"]] == ["Junk Cube"],
-   f"the earlier hammers' crafts are dropped, this one's kept ({pb.task_record(state, task)['done']})")
-ok(recipes.forget_finished(state, {"make": again}) is False, "and it isn't done twice")
-state = {"task_logs": {task: {"task": task, "count": 1, "made": 1, "done": [[clock("2026-10-22 06:00:00"), "Assemble Loose + Junk", "Junk Cube"]]}}}
-ok(recipes.forget_finished(state, {"make": {**again, "keys": ["mars_rhino"]}}) is False, "another item's finish doesn't touch it")
 
 # ---- the plan's recipe tree shows the whole recipe: what you hold, it shows how it's made (done)
 import dashboard  # noqa: E402
@@ -133,4 +97,17 @@ ok(not any(k == "gazania" and f is None for s in locked.steps if not s.get("unlo
 start = {"junk_cube_t1": 2, "marigold": 1}
 key = pb.plan_goal(pb.Bag({"inventory": start, "hammers": []}, {k: cards[k] for k in start}), False, {"goal": "slot3", "goal_again": False, "locked": []}, book, catalog)
 ok(any(s.get("unlock") for s in key.steps) and list(key.ready()), f"a plan with the slot-3 unlock in it still lists its ready crafts ({list(key.ready())[:1]})")
+
+# ---- an older record's failed smash: the console shows what its recipe makes, from the items it used
+old = [[1.0, "Smash Pond Beetle + Mithril Pollen", None], [2.0, "Assemble Pebble + Pebble", "Junk Cube"], [3.0, "Smash Pond Beetle + Mithril Pollen", None, "Pinecone", True]]
+shown = dashboard.aimed(old, pb.Bag({"inventory": {}}, cards), book, catalog)
+ok(shown[0][3:] == ["Pinecone or Moss or Gunpowder", None] and shown[1:] == old[1:], f"older failed smashes get it, the rest stay as they are ({shown[0][3:]})")
+
+# ---- an Auto make of something only a recipe that burns Green Beetles makes (a Purple Beetle): it's planned anyway
+greens = pb.Bag({"inventory": {"green": 6, "hammer_t1": 1}, "crafting_slot3_unlocked": True, "hammers": [{"hammer": "hammer_t1", "break_rate": 0, "base_break_rate": 0}]}, cards)
+purple = pb.plan_make(greens, True, {"keys": ["purple"], "recipe": None, "set_at": 1.0, "start": 0, "paused": False}, book, catalog)
+ok([s["label"] for s in purple.steps] == ["@beetle_3 from @beetle_2 + @beetle_2"] and purple.steps[0]["items"] == ["green", "green"],
+   f"a Purple Beetle: smashed from two Green Beetles ({[s['label'] for s in purple.steps]})")
+inside = pb.Planner(greens, book, catalog, True)
+ok(inside.obtain("purple") == ("purple", "wait") and not inside.steps, "as a step toward something else, it still waits for hunts")
 ok.done()

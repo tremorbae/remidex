@@ -5,6 +5,7 @@ from pathlib import Path
 import support
 pb = support.load()
 ok = support.Checks()
+from remidex.recipes import LOW_ODDS_TRIES, makes, odds  # noqa: E402
 tmp = Path(tempfile.mkdtemp())
 support.patch(CRAFT_STATS_FILE=tmp / "stats.json", REMOVED_FILE=tmp / "removed.json", OVERRIDES_FILE=tmp / "overrides.json", log=lambda m: None)
 pb._REMOVED["checked"] = 0
@@ -24,6 +25,13 @@ step = pb.next_craft(bag({"cucumber": 1, "junk_cube_t1": 1}), True, settings("@f
 ok(not step or "cucumber" not in step[2], f"and it's never smashed into a flower ({step})")
 step = pb.next_craft(bag({"nectar": 1, "purple": 1}), True, settings("monarch"), {})
 ok(step and sorted(step[2]) == ["nectar", "purple"], f"a Purple Beetle makes a Monarch ({step})")
+
+pin = pb.recipe_named("trophy_green from specimen_pin + @beetle")
+ok(makes(pin, "trophy_harlequin", book, catalog) and makes(pin, "trophy_green", book, catalog), "pinning any beetle is what the Specimen Pin makes")
+ok(not makes(pin, "trophy_chinese_coin", book, catalog), "and a trinket trophy isn't")
+for label in ("nectar or cattail from @beetle_3 + pollen_uncommon", cucumber, "pinecone or moss or gunpowder from @beetle_4 + pollen_rare"):
+    ok(odds(pb.recipe_named(label)) == 1 / LOW_ODDS_TRIES, f"the artifact smashes are planned as low odds until tried ({label})")
+ok(catalog["bumblebee"]["name"] == "Bumblebee" and catalog["whipscorpion"]["tier"] == 6, "the catalog has the game's names, and the Tailless Whipscorpion")
 
 total = len(book["recipes"])
 pb.remove_recipe(cucumber, "Smash Striped Cucumber Beetle + Bronze Pollen")

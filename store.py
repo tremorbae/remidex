@@ -54,9 +54,6 @@ def connect():
             try:
                 db.execute("PRAGMA journal_mode=WAL")  # the bot and the dashboard can use it at the same time
                 db.executescript(SCHEMA)
-                for column in ("viewed_you", "pokes_received", "smashes", "hammers_broken"):  # a database from before they were counted
-                    if column not in {row[1] for row in db.execute("PRAGMA table_info(daily)")}:
-                        db.execute(f"ALTER TABLE daily ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
                 break
             except sqlite3.OperationalError:
                 if attempt == 7:
@@ -118,25 +115,6 @@ def ingest_log(path):
         offset = int(get_meta(db, "log_offset", 0))
         if size < offset:
             offset = 0  # the log was cleared: read what's there now
-        if get_meta(db, "cheeseman_kept") is None:  # once: his lines from before this table existed, from what was read already
-            with open(path, "rb") as f:
-                earlier = f.read(offset).decode("utf-8", "replace")
-            old = [m.groups() for raw in earlier.splitlines() if (m := LINE.match(raw)) and m[2].startswith("Cheeseman:")]
-            db.executemany("INSERT OR IGNORE INTO cheeseman(stamp, line) VALUES (?, ?)", old)
-            set_meta(db, "cheeseman_kept", "yes")
-        if get_meta(db, "hammers_counted") is None:  # once: the smashes and broken hammers from before they were counted
-            old_log = Path(str(path) + ".old")
-            earlier = old_log.read_bytes() if old_log.exists() else b""
-            with open(path, "rb") as f:
-                earlier += f.read(offset)
-            days = defaultdict(lambda: defaultdict(int))
-            for raw in earlier.decode("utf-8", "replace").splitlines():
-                if match := LINE.match(raw):
-                    smashed, broke = smash_count(match[2])
-                    days[match[1][:10]]["smashes"] += smashed
-                    days[match[1][:10]]["hammers_broken"] += broke
-            add_days(db, days)
-            set_meta(db, "hammers_counted", "yes")
         if size == offset:
             db.execute("COMMIT")
             return 0
@@ -223,12 +201,15 @@ def trim_log(path, most=LOG_MOST, keep=LOG_KEEP):
 
 
 def streak():
-    """The cheese streak as of the last daily claim, or None."""
-    db = connect()
+    """The cheese streak as of the last daily claim, or None (also when the database can't be read)."""
     try:
-        value = get_meta(db, "streak")
-    finally:
-        db.close()
+        db = connect()
+        try:
+            value = get_meta(db, "streak")
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
     return int(value) if value else None
 
 
@@ -337,22 +318,5 @@ def feed_recent():
     db = connect()
     try:
         return dict(db.execute("SELECT handle, at FROM feed_seen WHERE at > ? ORDER BY at DESC", (time.time() - FEED_KEEP,)).fetchall())
-    finally:
-        db.close()
-
-
-def migrate(state, feed_seen):
-    """The first time: brings who was viewed (from the state file) and who the feed showed (from feed.json) into the
-    database. Returns whether it did, so the caller can drop them from the state file."""
-    db = connect()
-    try:
-        if get_meta(db, "moved_viewed_and_feed"):
-            return False
-        db.execute("BEGIN IMMEDIATE")
-        db.executemany("INSERT OR IGNORE INTO viewed(handle, at) VALUES (?, ?)", [(h, t) for h, t in (state.get("viewed_at") or {}).items() if isinstance(t, (int, float))])
-        db.executemany("INSERT OR IGNORE INTO feed_seen(handle, at) VALUES (?, ?)", [(h, t) for h, t in (feed_seen or {}).items() if isinstance(t, (int, float))])
-        set_meta(db, "moved_viewed_and_feed", 1)
-        db.execute("COMMIT")
-        return True
     finally:
         db.close()

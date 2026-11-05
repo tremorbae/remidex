@@ -13,7 +13,7 @@ and views whoever the feed has shown in between, with the same requests the webs
 makes. Having the page open regularly also keeps the website's sign-in fresh. Runs
 next to an always-on --watch-feed listener (see install_browser.sh).
 
-    python3 poke_browser.py --login       one-time: sign in in a Chrome window (tick "Remember me")
+    python3 poke_browser.py --sign-in     sign in (the dashboard's sign-in page runs this: see browser.sign_in_from_dashboard)
     python3 poke_browser.py --dry-run     show who is due a poke or a view, without doing either
     python3 poke_browser.py               poke the next person now, and view everyone who is due
     python3 poke_browser.py --watch-feed  record everyone in the activity feed (runs forever)
@@ -33,10 +33,13 @@ from remidex.core import (  # noqa: F401
     LOOKING_FOR,
     OVERRIDES_FILE,
     PEOPLE_PICS,
+    PURPLE,
     QUEUE_MAX,
+    SACRIFICE,
     SITE,
     SMASH,
     STATE_FILE,
+    TIN_HAMMER_CRAFT,
     USER_AGENT,
     as_dict,
     changed,
@@ -54,12 +57,12 @@ from remidex.settings import (  # noqa: F401
     alert,
     current_settings,
     load_settings,
+    valid_steps,
 )
 from remidex.recipes import (  # noqa: F401
     CRAFT_STATS_FILE,
     REMOVED_FILE,
     HUNTED_COST,
-    STUCK_COST,
     TASK_LOGS_KEPT,
     _BOOK,
     _REMOVED,
@@ -84,13 +87,13 @@ from remidex.recipes import (  # noqa: F401
     plan_goal,
     plan_make,
     proven_low_odds,
-    rebuild_task_log,
     recipe_book,
     recipe_label,
     recipe_named,
     recipes_for,
     remove_recipe,
-    skipped_labels,
+    sacrifice_kept,
+    step_picks,
     task_id,
     finished_key,
     task_record,
@@ -118,6 +121,7 @@ from remidex.beetle import (  # noqa: F401
     beetle_action,
 )
 from remidex.craft import (  # noqa: F401
+    CRAFT_NOW_FILE,
     FOR_GOOD,
     PURPLE_OFF,
     beetlecraft,
@@ -127,13 +131,13 @@ from remidex.craft import (  # noqa: F401
     log_screen,
     next_craft,
     pick_sacrifice,
+    side_craft,
 )
 from remidex.chat import (  # noqa: F401
     ATTACHMENT_NAME,
     CHAT_FILE,
     CHAT_FILES,
     CHAT_OUT_FILE,
-    GLOBAL_CHAT,
     REACTIONS,
     send_chat,
 )
@@ -143,7 +147,6 @@ from remidex.loop import (  # noqa: F401
     _SYNCED,
     chrome_session,
     main,
-    report,
     sync_game,
     wait_and_watch,
 )

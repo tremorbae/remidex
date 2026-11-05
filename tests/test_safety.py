@@ -175,13 +175,59 @@ for answer in ("UNLUCKY_ROLL", "SUCCESS", "INVALID_RECIPE", "ALREADY_OWNED"):
     if answer in ("UNLUCKY_ROLL", "SUCCESS"):
         ok(seen.get("n") == site.crafts, f"{answer}: each try is counted for the odds the planner learns ({seen})")
 
+
+# ---- a pause pressed on the dashboard mid-run: not one more craft with what was picked before
+class PausedSite(CraftSite):
+    def signed_api(self, method, path, body=None):
+        pb.write_json(pb.OVERRIDES_FILE, {"make": {**settings["make"], "paused": True}})  # pressed while this craft was going
+        return super().signed_api(method, path, body)
+
+
+class CountdownSite(CraftSite):  # pressed during the countdown before the first craft
+    def wait(self, s):
+        self.waits = getattr(self, "waits", 0) + 1
+        pb.write_json(pb.OVERRIDES_FILE, {"make": {**settings["make"], "paused": True}})
+
+
+class Watched(CraftSite):  # what the craft screen's little screen is told, each time
+    def __init__(self, answer):
+        super().__init__(answer)
+        self.told, self.waits = [], 0
+
+    def wait(self, s):
+        self.waits += 1
+        self.told.append(pb.read_json(pb.CRAFT_NOW_FILE).get("doing"))
+
+    def signed_api(self, method, path, body=None):
+        self.told.append(pb.read_json(pb.CRAFT_NOW_FILE).get("doing"))
+        return super().signed_api(method, path, body)
+
+
+for site, paused in ((CraftSite("UNLUCKY_ROLL"), False), (PausedSite("UNLUCKY_ROLL"), True), (CountdownSite("UNLUCKY_ROLL"), True)):
+    pb.write_json(pb.GAME_FILE, {}); pb.write_json(pb.OVERRIDES_FILE, {})
+    state = {"handle": "me"}
+    pb.beetlecraft(site, state, False, settings)
+    if isinstance(site, CountdownSite):
+        ok(site.crafts == 0 and site.waits == 1 and state["craft_check_at"] == 0, f"paused in the countdown: that craft never goes ({site.crafts} crafts)")
+    elif paused:
+        ok(site.crafts == 1 and state["craft_check_at"] == 0, f"paused mid-run: it stops before the next craft and looks again at once ({site.crafts} crafts)")
+    else:
+        ok(site.crafts > 1, f"not paused: the run goes on ({site.crafts} crafts)")
+    ok(pb.read_json(pb.CRAFT_NOW_FILE).get("doing") == "done", "the little screen is told the run is over")
+
+pb.write_json(pb.GAME_FILE, {}); pb.write_json(pb.OVERRIDES_FILE, {})
+site = Watched("UNLUCKY_ROLL")
+pb.beetlecraft(site, {"handle": "me"}, False, settings)
+ok(site.waits == 5 * site.crafts and site.told == (["next"] * 5 + ["crafting"]) * site.crafts,
+   f"a 5-second countdown before each craft, then crafting ({site.crafts} crafts, {site.waits} seconds)")
+
 # ---- someone's first sign-in on this Mac: every switch on the dashboard starts off; nobody who's been here is changed
 support.patch(COOKIES_FILE=tmp / "new_cookies.json", STATE_FILE=tmp / "new_state.json", OVERRIDES_FILE=tmp / "new_overrides.json")
 ok(browser.first_sign_in_defaults(), "a first sign-in sets the defaults")
 fresh = pb.load_settings()
-ok(not any(fresh["beetleboy"].values()) and not any(fresh[k] for k in ("pokes", "friend_requests", "view_profiles", "junk_cubes")),
-   f"claims, hunts, pokes, friend requests, profile views and junk cubes all start off ({fresh['beetleboy']})")
+ok(not any(fresh["beetleboy"].values()) and not any(fresh[k] for k in ("pokes", "friend_requests", "view_profiles", "junk_cubes", "tin_hammer")),
+   f"claims, hunts, pokes, friend requests, profile views, junk cubes and the Tin Hammer all start off ({fresh['beetleboy']})")
 ok(not browser.first_sign_in_defaults() and pb.read_json(pb.OVERRIDES_FILE) and not fresh["beetleboy"]["beetleHunt"], "someone who's been here keeps what they set")
 support.patch(OVERRIDES_FILE=tmp / "nothing_picked.json")
-ok(all(pb.load_settings()[k] for k in ("pokes", "view_profiles")), "with nothing picked (an install from before), they stay on")
+ok(all(pb.load_settings()[k] for k in ("pokes", "view_profiles", "tin_hammer")), "with nothing picked (an install from before), they stay on")
 ok.done()

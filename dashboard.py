@@ -18,6 +18,7 @@ import re
 import secrets
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -28,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import poke_browser as bot
+from remidex import browser
 from remidex.places import WINDOWS
 import quests
 import store
@@ -39,6 +41,7 @@ ADDRESS = f"http://remidex.localhost:{PORT}"  # only answers on this Mac
 ITEM_KEY = re.compile(r"^[a-z0-9_]{1,60}$")
 MAX_LOCKED = 300  # items that can be switched off at once
 PAGE = Path(__file__).with_name("dashboard.html")
+SIGN_IN_PAGE = Path(__file__).with_name("signin.html")  # shown instead while the bot's signed out
 LOG_FILE = bot.LOG_FILE
 LOG_TAIL_BYTES = 600_000  # enough for today's lines without reading the whole log
 LOG_LINES = 1500  # the page shows the newest 250 for whichever tab is open
@@ -85,7 +88,7 @@ NO_ART = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x=
           b'text-anchor="middle" fill="#9aa3ad">?</text></svg>')  # for an item with no picture anywhere
 CATEGORY_ORDER = {1: 0, 2: 1, 5: 2, 6: 3, 4: 4, 7: 5, 8: 6, 9: 7, 3: 8, 10: 9}
 SWITCHES = {**{action: "beetleboy" for action in bot.BEETLE_SETTINGS}, **{action: "social" for action in bot.SOCIAL_SETTINGS},
-            "junk_cubes": "crafting"}
+            "junk_cubes": "crafting", "tin_hammer": "crafting"}
 POKED = re.compile(r"^~([A-Za-z0-9_]+) \(")  # "~handle (friend): poked." and friend-request lines
 # What a poke or friend-request line says about a friend request: one sent, theirs accepted, or ours declined.
 FRIEND_EVENTS = (("accepted their friend request", "accepted"), ("accepted your friend request", "accepted_yours"),
@@ -752,18 +755,17 @@ def craft_console(bag, slot3, settings, state, step, titles):
     spare = bot.usable(bag, settings)  # the plan only uses what isn't switched off
     now = None
     if step and focus == kind:
-        label, mode, items, hammer, sacrifice = step
+        label, mode, items, hammer, sacrifice, aim, source = step
         what, how = bot.describe_craft(bag, mode, items, hammer, sacrifice)
-        now = {"what": what, "out": " or ".join(name(o) for o in label.split(" from ")[0].split(" or ")), "how": how.strip(" ()"),
-               "side": bool(settings.get("junk_cubes") and label == bot.JUNK_CUBE_CRAFT)}
-    key = json.dumps([bag.items, slot3, task, settings.get("make"), settings.get("goal_again"), step and step[:3], bot.craft_stats() and bot._STATS["at"], bot._REMOVED["at"],
-                      settings.get("locked"), int(time.time() // 600)], sort_keys=True, default=str)
+        now = {"what": what, "out": name(aim), "how": how.strip(" ()"), "side": bool(bot.side_craft(settings, label)),
+               "waiting": source == 2}  # (made for a waiting step: see bot.ready_crafts)
+    key = json.dumps([bag.items, slot3, task, settings.get("make"), settings.get("goal_again"), step and [*step[:3], step[6]], bot.craft_stats() and bot._STATS["at"], bot._REMOVED["at"],
+                      settings.get("locked"), settings.get("sacrifice"), settings.get("tin_hammer"), int(time.time() // 600)], sort_keys=True, default=str)
     if _console["for"] != key:
-        build = (lambda hunted: bot.plan_make(spare, slot3, settings["make"], book, catalog, hunted)) if kind == "make" else \
+        build = (lambda hunted: bot.plan_make(spare, slot3, settings["make"], book, catalog, hunted, sacrifice=bot.sacrifice_kept(settings),
+                                                  forge=settings["tin_hammer"])) if kind == "make" else \
             (lambda hunted: bot.plan_goal(bag, slot3, settings, book, catalog, hunted))
         plan = build(bot.HUNTED_COST)
-        if step and not now["side"] and not any(s.get("label") == step[0] and s.get("items") == step[2] for s in plan.steps):
-            plan = build(bot.STUCK_COST)  # the plan it's going by
         steps, mark = [], step if now and not now["side"] else None
         for s in plan.steps:
             if s.get("unlock"):
@@ -773,8 +775,27 @@ def craft_console(bag, slot3, settings, state, step, titles):
             mark = None if here else mark
             steps.append({**step_view(s), "now": here, "long": bot.long_shot(book["recipes"][s["recipe"]])})  # (done after the sure steps)
         _console.update({"for": key, "steps": steps[:PLAN_STEPS], "more": max(0, len(steps) - PLAN_STEPS), "held": held_plans(plan.steps, spare, slot3, book, catalog)})
-    return {"task": kind, "title": titles[kind], "paused": focus != kind, "done": record.get("done", []), "count": record.get("count", 0), "made": bot.made_count(record) if record else 0,
+    return {"task": kind, "title": titles[kind], "paused": focus != kind, "done": aimed(record.get("done", []), bag, book, catalog), "count": record.get("count", 0), "made": bot.made_count(record) if record else 0,
             "now": now, "steps": _console["steps"], "more": _console["more"], "held": _console["held"]}
+
+
+_AIMS = {}  # an older failed smash's words -> what its recipe makes
+
+
+def aimed(done, bag, book, catalog):
+    """A task's crafts as recorded (see bot.note_craft). Older ones didn't keep what they aimed for, so a failed smash among
+    them gets what its recipe makes, worked out from the items it used (what the plan wanted from it wasn't kept)."""
+    keys, out = None, []
+    for entry in done:
+        if isinstance(entry, list) and len(entry) == 3 and entry[2] is None and isinstance(entry[1], str) and entry[1].startswith("Smash "):
+            if entry[1] not in _AIMS:
+                keys = keys or bag.keys_by_name()
+                items = [keys.get(n) for n in entry[1][len("Smash "):].split(" + ")]
+                fit = None not in items and bot.craft_specs("smash", items, None, book, catalog)
+                _AIMS[entry[1]] = " or ".join(bot.label_of(k, bag, book) for k in fit[0]["out"]) if fit else None
+            entry = [*entry, _AIMS[entry[1]], None]
+        out.append(entry)
+    return out
 
 
 def recipe_check():
@@ -821,9 +842,15 @@ def remilia_achievements():
 
 def settings_view(settings):
     """The settings the page shows and changes."""
-    return {"beetleboy": settings["beetleboy"], **{k: settings[k] for k in ("pokes", "friend_requests", "view_profiles", "junk_cubes")},
-            "hammer_timing": settings["hammer_timing"], "locked": settings["locked"],
-            "skipped": sorted(bot.skipped_labels("make", settings) | bot.skipped_labels("goal", settings))}
+    return {"beetleboy": settings["beetleboy"], **{k: settings[k] for k in ("pokes", "friend_requests", "view_profiles", "junk_cubes", "tin_hammer")},
+            "hammer_timing": settings["hammer_timing"], "locked": settings["locked"], "sacrifice": settings["sacrifice"],
+            "steps": {k: v for k, v in step_picks_now(settings).items() if k != "task"}}
+
+
+def step_picks_now(settings):
+    """What's picked for the steps of the Auto make or quest they were picked for (see bot.step_picks)."""
+    picks = bot.step_picks("make", settings)
+    return picks if picks["task"] else bot.step_picks("goal", settings)
 
 
 def hammer_rack(bag, cards, settings):
@@ -843,6 +870,77 @@ _status_cache = {"at": 0.0, "body": b""}
 _status_lock = threading.Lock()
 
 
+SIGN_IN_TIMEOUT = 150 + browser.CODE_WAIT  # the most a sign-in from the dashboard takes (it's usually half a minute, plus typing a code)
+CODE = re.compile(r"\d{4,10}")  # a two-factor code (RemiliaNET's are 6 digits)
+_sign_in = {"running": False, "step": None, "error": None, "attempt": None, "stopped": False, "proc": None, "at": 0.0}  # the last one
+_sign_in_lock = threading.Lock()
+
+
+def run_sign_in(email, password):
+    """Signs the bot in with the email and password from the sign-in page: the bot's own --sign-in, given them on its
+    input (other programs on this computer can read a command line, not that), and then a two-factor code if RemiliaNET
+    wants one (see send_code). Keeps how it's going for the page, and passes the bot's own log lines to its log."""
+    error, timed_out = "RemiDex couldn't finish signing in. Try again", []
+    try:
+        proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("poke_browser.py")), "--sign-in"],
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+    except OSError:
+        proc = None
+    if proc:
+        watchdog = threading.Timer(SIGN_IN_TIMEOUT, lambda: (timed_out.append(True), proc.kill()))
+        watchdog.start()
+        with _sign_in_lock:
+            _sign_in["proc"] = proc
+        result = {}
+        try:
+            proc.stdin.write(json.dumps({"email": email, "password": password}) + "\n")
+            proc.stdin.flush()
+            for line in proc.stdout:
+                line = line.strip()
+                try:
+                    said = json.loads(line) if line.startswith("{") else None
+                except ValueError:
+                    said = None
+                if not isinstance(said, dict):
+                    if line:
+                        with LOG_FILE.open("a") as log:  # (the activity feed shows the bot's log)
+                            log.write(line + "\n")
+                elif said.get("step") == "code":
+                    with _sign_in_lock:
+                        if not _sign_in["stopped"]:  # (a "start over" already sent stops it at this question)
+                            _sign_in.update(step="code", error=said.get("error"), at=time.time())
+                elif "ok" in said:
+                    result = said
+            proc.wait(timeout=30)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            proc.kill()
+        watchdog.cancel()
+        error = None if result.get("ok") is True else str(result.get("error") or ("Signing in took too long. Try again" if timed_out else error))[:300]
+    with _sign_in_lock:
+        _sign_in.update(running=False, step=None, proc=None, error=None if _sign_in["stopped"] else error, at=time.time())
+    _status_cache["at"] = 0
+
+
+def tell_sign_in(message):
+    """Sends the running sign-in a line ({"code"} or {"stop": true}). Returns whether it could."""
+    proc = _sign_in["proc"]
+    try:
+        proc.stdin.write(json.dumps(message) + "\n")
+        proc.stdin.flush()
+        return True
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def sign_in_view():
+    """GET /api/sign-in, for the sign-in page: whether the bot's signed in; how a sign-in from it is going ("step": "code"
+    while it waits for your two-factor code, "checking" once sent; "attempt" says which sign-in, so a page only shows its
+    own errors); and your profile's colour (for the page's colour theme)."""
+    hue = bot.read_json(bot.DASH_DIR / "look.json").get("color")
+    return {"signed_in": not browser.signed_out(), "running": _sign_in["running"], "step": _sign_in["step"], "error": _sign_in["error"],
+            "attempt": _sign_in["attempt"], "hue": hue if isinstance(hue, (int, float)) else 204}
+
+
 def status_body():
     """The status as JSON, worked out at most once a second (so a few open tabs, or a burst of changes, don't each cost
     a full rebuild); callers wait for the one being built."""
@@ -855,7 +953,7 @@ def status_body():
 def live_version():
     """A mark of everything the dashboard shows (the log, the game, settings, who's poked you...): it changes whenever any
     of that does, so the page can update the moment something happens."""
-    files = [LOG_FILE, bot.GAME_FILE, bot.STATE_FILE, bot.OVERRIDES_FILE, bot.STATUS_FILE, bot.FEED_US_FILE, bot.CRAFT_STATS_FILE, bot.REMOVED_FILE,
+    files = [LOG_FILE, bot.GAME_FILE, bot.STATE_FILE, bot.OVERRIDES_FILE, bot.STATUS_FILE, bot.CRAFT_NOW_FILE, bot.FEED_US_FILE, bot.CRAFT_STATS_FILE, bot.REMOVED_FILE,
              bot.PROFILE_EDIT_FILE, bot.MY_ACHIEVEMENTS_FILE, bot.DASH_DIR / "social.json", bot.DASH_DIR / "views.json", bot.DASH_DIR / "quests.json"]
     return tuple(bot.stamp(f) for f in files)
 
@@ -902,13 +1000,13 @@ def status():
     saved_views = bot.read_json(bot.DASH_DIR / "views.json")
     viewers = [{"id": v.get("id") or f"{v['handle']} {v.get('at')}", **{k: v.get(k) for k in ("handle", "name", "count", "at")},
                 "pic": v["handle"] in pics}
-               for v in saved_views.get("notes") or saved_views.get("views") or [] if isinstance(v, dict) and v.get("handle")]
+               for v in saved_views.get("notes") or [] if isinstance(v, dict) and v.get("handle")]
     result = {
         "now": now,
         "look": {"hue": look.get("color") if isinstance(look.get("color"), (int, float)) else 204,
                  "name": look.get("displayName"), "pfp": (bot.DASH_DIR / "pfp").exists()},
         "jobs": running_jobs(),
-        "needs_login": bool(state.get("needs_login")),
+        "needs_login": bool(state.get("needs_login")) or not browser.COOKIES_FILE.exists(),
         "handle": state.get("handle"),
         "pokes": {"next_at": state.get("next_slot_at"), "friends": len(state.get("friends") or [])},
         "today": today_counts(),
@@ -921,7 +1019,9 @@ def status():
         "profile_edit": {k: v for k, v in bot.read_json(bot.PROFILE_EDIT_FILE).items() if k in ("asked_at", "done_at", "ok", "error", "field")} or None,
         "social": with_live_pokes([{**{k: n.get(k) for k in ("id", "type", "handle", "name", "count", "at", "state", "mutual")}, "pic": n["handle"] in pics}
                                    for n in bot.read_json(bot.DASH_DIR / "social.json").get("notes", []) if isinstance(n, dict) and n.get("handle") and n.get("id")], pics),
-        "bot": bot.read_json(bot.STATUS_FILE) or None,  # what the bot says it's doing and what's next (see bot.report)
+        "bot": bot.read_json(bot.STATUS_FILE) or None,  # what the bot says it's doing and what's next (see report in remidex/loop.py)
+        "crafting": bot.read_json(bot.CRAFT_NOW_FILE) or None,  # what crafting is doing this moment (see crafting_now in remidex/craft.py)
+        "craft_check_at": state.get("craft_check_at"),  # when the bot next looks at crafting
     }
 
     saved = bot.read_json(bot.GAME_FILE)
@@ -951,8 +1051,9 @@ def status():
             "hunts": {"used": used, "unlock_at": unlock if unlock and unlock > now else None},
             "items": all_items(bag, cards),
             "rack": hammer_rack(bag, cards, settings),
-            "next_craft": " ".join(bot.describe_craft(bag, *step[1:])).replace(" (", "\n(") if step else None,
+            "next_craft": " ".join(bot.describe_craft(bag, *step[1:5])).replace(" (", "\n(") if step else None,
             "wait": _next["wait"],
+            "tin_made": (bot.craft_stats().get(bot.TIN_HAMMER_CRAFT) or {}).get("n", 0),  # Tin Hammers made, by the bot and by you on the site
             "craft_off": sorted(label for label, until in off.items() if number(until) and now < until < now + bot.FOR_GOOD / 2),  # not the removed ones
             "discovered": len(cards),
         }
@@ -972,11 +1073,7 @@ def status():
         done = bot.read_json(done_file).get("done", {})
         midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
         viewers_today = len({v["handle"] for v in viewers if (v["at"] or 0) >= midnight})
-        try:
-            streak = store.streak()
-        except sqlite3.Error:
-            streak = None
-        result["quests"], changed = quests.check(items, game, state, viewers_today, done, {**result["totals"], "streak": streak})
+        result["quests"], changed = quests.check(items, game, state, viewers_today, done, {**result["totals"], "streak": result["game"]["streak"]})
         found = {i["key"] for i in items if i["discovered"] or i["count"] > 0}
         owned = {i["key"] for i in items if i["count"] > 0}
         beetles = {i["key"] for i in items if i["category"] == 2}
@@ -1032,21 +1129,37 @@ def make_request(keys, recipe):
     return bot.new_make(keys, recipe, bot.Bag(saved["game"], saved.get("cards") or {}), book)
 
 
-MAX_SKIPPED = 40  # steps skipped at once
+MAX_PICKED = 40  # steps with something picked, at most
 
 
-def skip_step(overrides, request):
-    """Skips a step of the Auto make or quest being worked on (the bot does it last), or puts it back in order. Steps are
-    known by their recipe; a skip lasts while that Auto make or quest does. Returns False if the request doesn't make sense."""
-    task, label, skip = request.get("task"), request.get("label"), request.get("skip")
+def pick_for_step(overrides, request):
+    """Picks something for a step of the Auto make or quest being worked on, from the step's options. Steps are known by
+    their recipe ("label"), and what's picked lasts while that Auto make or quest does. One of: "skip": true (done last)
+    or false (back in order); "first": true (worked on first, with the steps it needs; one step at a time) or false; and
+    for a smash, "sacrifice": "green" or "purple", or "hammer": one of yours, either null for the bot's own choice.
+    Returns False if the request doesn't make sense."""
+    task, label = request.get("task"), request.get("label")
     tid = bot.task_id(task, bot.load_settings()) if task in ("make", "goal") else None
-    if not (tid and isinstance(label, str) and bot.recipe_named(label) and isinstance(skip, bool)):
+    recipe = bot.recipe_named(label) if isinstance(label, str) else None
+    if not (tid and recipe):
         return False
-    kept = overrides.get("skipped") if isinstance(overrides.get("skipped"), dict) and overrides["skipped"].get("task") == tid else {}
-    labels = [k for k in kept.get("labels") or [] if isinstance(k, str) and k != label] + ([label] if skip else [])
-    if len(labels) > MAX_SKIPPED:
+    kept = bot.valid_steps(overrides.get("steps"))
+    picks = kept if kept and kept["task"] == tid else {"task": tid, "skipped": [], "first": None, "sacrifice": {}, "hammer": {}}
+    smash, choice = recipe["mode"] == "smash", lambda key, allowed: key in request and request[key] in (None, *allowed)  # noqa: E731
+    if isinstance(request.get("skip"), bool):
+        picks["skipped"] = [k for k in picks["skipped"] if k != label] + ([label] if request["skip"] else [])
+        picks["first"] = None if request["skip"] and picks["first"] == label else picks["first"]
+    elif isinstance(request.get("first"), bool):
+        picks["first"] = label if request["first"] else None if picks["first"] == label else picks["first"]
+        picks["skipped"] = [k for k in picks["skipped"] if not (request["first"] and k == label)]  # (worked on first: not skipped)
+    elif smash and (choice("sacrifice", (bot.SACRIFICE, bot.PURPLE)) or choice("hammer", bot.HAMMERS)):
+        key = "sacrifice" if "sacrifice" in request else "hammer"
+        picks[key] = {k: v for k, v in picks[key].items() if k != label} | ({label: request[key]} if request[key] else {})
+    else:
         return False
-    overrides["skipped"] = {"task": tid, "labels": labels}
+    if len(set(picks["skipped"]) | set(picks["sacrifice"]) | set(picks["hammer"])) > MAX_PICKED:
+        return False
+    overrides["steps"] = picks
     return True
 
 
@@ -1175,10 +1288,17 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/stream":
             self.stream()
             return
+        if self.path in ("/", "/index.html", "/sign-in") and (self.path == "/sign-in") != browser.signed_out():
+            self.go_to("/sign-in" if browser.signed_out() else "/")  # signed out: the sign-in page; signed in: the dashboard
+            return
         if self.path == "/api/status":
             body, kind = status_body(), "application/json"
         elif self.path in ("/", "/index.html"):
             body, kind = PAGE.read_bytes(), "text/html; charset=utf-8"
+        elif self.path == "/sign-in":
+            body, kind = SIGN_IN_PAGE.read_bytes(), "text/html; charset=utf-8"
+        elif self.path == "/api/sign-in":
+            body, kind = json.dumps(sign_in_view()).encode(), "application/json"
         elif self.path == "/logo.svg" and (body := remidex_logo()):
             kind, cache = "image/svg+xml", "max-age=86400"
         elif self.path == "/icon.svg" and (body := remidex_icon()):
@@ -1235,6 +1355,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_with_safe_headers()
         self.wfile.write(body)
 
+    def go_to(self, where):
+        """Sends the browser to another page of the dashboard."""
+        self.send_response(303)
+        self.send_header("Location", where)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_with_safe_headers()
+
     def stream(self):
         """GET /api/stream: a live connection that says "changed" the moment anything the dashboard shows changes, so the
         page can update straight away instead of on a timer. A quiet line every 15 seconds keeps it open."""
@@ -1275,18 +1403,22 @@ class Handler(BaseHTTPRequestHandler):
             POST /api/profile {"displayName", "bio", "friendsDisplayed": [handles], "achievementsDisplayed": [ids], "shelves": [15 trophy ids, 0 = empty]}
                                                                           change your RemiliaNET profile or trophy shelf (the bot makes it)
             POST /api/lock {"key": "pollen_tin", "locked": true}          switch an item off: the bot never uses it in a craft (or false: back on)
-            POST /api/skip {"task": "make" or "goal", "label": a recipe, "skip": true}  do that step last (or false: back in order)
+            POST /api/sacrifice {"beetle": "green", "auto" or "purple"}   Crafting Beetles: what every smash sacrifices (a step's own pick wins)
+            POST /api/step {"task": "make" or "goal", "label": a recipe, "skip": true}  a step's options: do it last (or false: back
+                 in order); or "first": true (work on it first) or false; or "sacrifice" or "hammer" for it (null: the bot's choice)
             POST /api/looking {}                                          the page is open and visible: the bot keeps the game up to date
             POST /api/chat/attach (a picture or video, sent as its own type)  kept for a chat message: answers {"id"}
             POST /api/chat/send {"text", "attachments": [ids], "reply_to": a message id or null}  a message for the global chat
+            POST /api/sign-in {"email", "password"}                       while the bot's signed out: sign it back in (see sign_in)
+            POST /api/sign-in/code {"code"}                               its two-factor code, when it asks; POST /api/sign-in/stop {}: start over
         Only the dashboard's own page may do this: other sites in your browser can't send the JSON header without
         permission, and requests addressed to any other host name are refused."""
         allowed = NAMES
         origin = self.headers.get("Origin")  # (the Host check is the same as local_only)
         host_ok, origin_ok = self.headers.get("Host") in allowed, not origin or origin.split("//", 1)[-1] in allowed
         attaching = self.path == "/api/chat/attach"  # (the file itself, sent as its own type: see chat_attach)
-        if (self.path not in ("/api/switch", "/api/goal", "/api/make", "/api/hammers", "/api/pause", "/api/queue", "/api/profile", "/api/lock", "/api/skip", "/api/looking",
-                              "/api/chat/attach", "/api/chat/send", "/api/chat/react") or not host_ok
+        if (self.path not in ("/api/switch", "/api/goal", "/api/make", "/api/hammers", "/api/pause", "/api/queue", "/api/profile", "/api/lock", "/api/sacrifice", "/api/step", "/api/looking",
+                              "/api/chat/attach", "/api/chat/send", "/api/chat/react", "/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop") or not host_ok
                 or (self.headers.get("Content-Type") not in CHAT_TYPES if attaching else self.headers.get("Content-Type") != "application/json") or not origin_ok):
             self.send_error(403)
             return
@@ -1310,6 +1442,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/api/chat/send", "/api/chat/react"):
             self.chat_send(request)
             return
+        if self.path in ("/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop"):
+            self.sign_in(request)
+            return
         with bot.editing(bot.OVERRIDES_FILE):  # one change at a time, the bot's included, so none undoes another
             self.save_change(request)
 
@@ -1324,7 +1459,6 @@ class Handler(BaseHTTPRequestHandler):
             self.answer_settings()
             return
         overrides = bot.read_json(bot.OVERRIDES_FILE)
-        overrides.pop("max_break", None)  # (an older version's; nothing reads it now)
         if self.path == "/api/switch":
             action, auto = request.get("action"), request.get("auto")
             if not isinstance(action, str) or action not in SWITCHES or not isinstance(auto, bool):
@@ -1357,8 +1491,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(400)
                 return
             overrides["locked"] = kept + [key] if locked else kept
-        elif self.path == "/api/skip":
-            if not skip_step(overrides, request):
+        elif self.path == "/api/sacrifice":
+            beetle = request.get("beetle")
+            if beetle not in (bot.SACRIFICE, "auto", bot.PURPLE):
+                self.send_error(400)
+                return
+            if beetle == "auto":
+                overrides.pop("sacrifice", None)
+            else:
+                overrides["sacrifice"] = beetle
+        elif self.path == "/api/step":
+            if not pick_for_step(overrides, request):
                 self.send_error(400)
                 return
         elif self.path == "/api/queue":
@@ -1436,6 +1579,47 @@ class Handler(BaseHTTPRequestHandler):
                 return
             bot.write_json(bot.CHAT_OUT_FILE, {**out, "queue": queue + [item]})
         self.answer_json({"id": item["id"]})
+
+    def sign_in(self, request):
+        """From the sign-in page, while the bot's signed out (it leaves Chrome alone then):
+            POST /api/sign-in {"email", "password"}   signs the bot in to RemiliaNET, in the background (about half a
+                                                      minute); answers {"started": true, "attempt"}. GET /api/sign-in says how it's going.
+            POST /api/sign-in/code {"code"}           the two-factor code, once it says "step": "code"
+            POST /api/sign-in/stop {}                 stops it (to start over)
+        The password and code go straight to the bot's Chrome, and are never saved. 409: not now (signed in already, a
+        sign-in's under way, or it isn't waiting for a code)."""
+        if self.path == "/api/sign-in/code":
+            code = re.sub(r"[\s-]", "", str(request.get("code") or ""))
+            if not CODE.fullmatch(code):
+                self.send_error(400)
+                return
+            with _sign_in_lock:
+                if not (_sign_in["running"] and _sign_in["step"] == "code") or not tell_sign_in({"code": code}):
+                    self.send_error(409)
+                    return
+                _sign_in.update(step="checking", error=None, at=time.time())
+            self.answer_json({"ok": True})
+            return
+        if self.path == "/api/sign-in/stop":
+            with _sign_in_lock:
+                if _sign_in["running"]:
+                    _sign_in.update(stopped=True, step=None, error=None, at=time.time())
+                    tell_sign_in({"stop": True})
+            self.answer_json({"ok": True})
+            return
+        email, password = request.get("email"), request.get("password")
+        if not (isinstance(email, str) and 0 < len(email.strip()) <= 254 and isinstance(password, str) and 0 < len(password) <= 1024):
+            self.send_error(400)
+            return
+        with _sign_in_lock:
+            if _sign_in["running"] or not browser.signed_out():
+                self.send_error(409)
+                return
+            attempt = int(time.time() * 1000)
+            _sign_in.update(running=True, step=None, error=None, attempt=attempt, stopped=False, at=time.time())
+        threading.Thread(target=run_sign_in, args=(email.strip(), password), daemon=True).start()
+        _status_cache["at"] = 0
+        self.answer_json({"started": True, "attempt": attempt})
 
     def relay_media(self, media_id):
         """GET /rmedia/<id>: a video from RemiliaNET's chat (they're public), passed through as it comes, a part at a time

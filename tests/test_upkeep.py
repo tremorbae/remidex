@@ -69,7 +69,7 @@ moss = "pinecone or moss or gunpowder from @beetle_4 + pollen_rare"
 pb.write_json(pb.CRAFT_STATS_FILE, {moss: {"n": 40, "outs": {"moss": 1}}}); pb._STATS["checked"] = 0
 lotus = pb.Bag({"inventory": {"pond": 1, "pollen_rare": 1, "nectar": 1, "ladybug": 1, "green": 9, "hammer_t1": 1}, "crafting_slot3_unlocked": True,
                 "hammers": [{"hammer": "hammer_t1", "break_rate": 0, "base_break_rate": 0}]}, cards)
-settings = {"junk_cubes": False, "goal": None, "locked": [], "skipped": None, "hammer_off": [],
+settings = {"junk_cubes": False, "goal": None, "locked": [], "steps": None, "hammer_off": [],
             "make": {"keys": ["mars_rhino"], "recipe": None, "set_at": 1.0, "start": 0, "paused": False},
             "hammer_order": pb.HAMMERS, "hammer_limits": {h: 95 for h in pb.HAMMERS}, "hammer_timing": False}
 order = [c[0] for c in pb.craft_candidates(lotus, True, settings, fallback=False)]

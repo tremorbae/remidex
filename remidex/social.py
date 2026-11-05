@@ -31,7 +31,7 @@ from remidex.core import (
     write_json,
 )
 from remidex.settings import alert
-from remidex.state import move_to_store, read_notes, save_picture
+from remidex.state import read_notes, save_picture
 
 
 FEED_URL = SITE + "/api/activityFeed"
@@ -460,7 +460,6 @@ def watch_feed():
     """Runs forever: notes when each user last showed up in the public activity feed, for runs to view them.
 
     Sightings older than a day are dropped (see store.FEED_KEEP)."""
-    move_to_store()
     drops = 0  # disconnects since the feed last connected
     recent, shown_at = collections.deque(maxlen=FEED_SHOWN), 0.0  # the newest events, for the dashboard's RemiliaNET Activity
     while True:

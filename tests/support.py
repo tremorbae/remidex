@@ -21,7 +21,7 @@ def load():
     store.DB_FILE = away / "test.db"  # never your real history
     # nor your chat, what you wrote in it, or whether your dashboard is open (a test can still point them elsewhere)
     patch(CHAT_FILE=away / "chat.json", CHAT_OUT_FILE=away / "chat_out.json", CHAT_FILES=away / "chat_files",
-          REMILIA_FEED_FILE=away / "remilia_activity.json", LOOKING_FILE=away / "looking.json")
+          REMILIA_FEED_FILE=away / "remilia_activity.json", LOOKING_FILE=away / "looking.json", CRAFT_NOW_FILE=away / "craft_now.json")
     return poke_browser
 
 

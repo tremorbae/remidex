@@ -21,7 +21,7 @@ H = lambda k, rate=0: {"hammer": k, "craft_count": 0, "break_rate": rate, "base_
 bag = lambda inv, hammers: pb.Bag({"inventory": inv, "crafting_slot3_unlocked": True, "hammers": hammers}, cards)  # noqa: E731
 make = lambda key: {"keys": [key], "recipe": None, "set_at": 1.0, "start": 0, "paused": False}  # noqa: E731
 settings = lambda key, **kw: {"junk_cubes": False, "goal": None, "goal_again": False, "goal_paused": False, "goal_set_at": None, "locked": [],  # noqa: E731
-                              "make": make(key), "skipped": None, "hammer_order": pb.HAMMERS, "hammer_limits": {h: 95 for h in pb.HAMMERS}, "max_break_chance": 25,
+                              "make": make(key), "steps": None, "hammer_order": pb.HAMMERS, "hammer_limits": {h: 95 for h in pb.HAMMERS}, "max_break_chance": 25,
                               "hammer_timing": False, "hammer_off": [], **kw}
 
 # ---- the setting
@@ -31,13 +31,13 @@ ok(pb.load_settings()["hammer_off"] == ["hammer_t4"], "read back: only real hamm
 ok(pb.load_settings()["hammer_off"] == [], "a broken one is ignored: every hammer smashes")
 
 # ---- smashing: never with a switched-off hammer
-flowers = {"daisy": 2, "green": 3, "hammer_t1": 1, "hammer_t4": 1}  # two Tin Flowers to smash into a Bronze one
+flowers = {"ladybug": 1, "junk_cube_t1": 1, "green": 3, "hammer_t1": 1, "hammer_t4": 1}  # a Bronze beetle and a Junk Cube to smash into a Bronze flower
 both = [H("hammer_t1"), H("hammer_t4")]
 order = settings("@flower_3", hammer_order=["hammer_t4", "hammer_t1", "hammer_t2", "hammer_t3", "hammer_t5"])
 ok(pb.next_craft(bag(flowers, both), True, order, {})[3] == "hammer_t4", "all on: it smashes with the first in your order (Adamantine)")
 off = {**order, "hammer_off": ["hammer_t4"]}
 ok(pb.next_craft(bag(flowers, both), True, off, {})[3] == "hammer_t1", "Adamantine switched off: it smashes with the Tin Hammer instead")
-only = {"daisy": 2, "green": 3, "hammer_t4": 1}
+only = {"ladybug": 1, "junk_cube_t1": 1, "green": 3, "hammer_t4": 1}
 ok(pb.next_craft(bag(only, [H("hammer_t4")]), True, off, {}) is None, "the only hammer is switched off: no smash")
 sure = {"nectar": 1, "ladybug": 1, "green": 3, "hammer_t4": 1}  # a sure smash, ready but for a hammer
 why = pb.craft_wait(bag(sure, [H("hammer_t4")]), True, settings("monarch", hammer_off=["hammer_t4"]), {})
@@ -62,8 +62,8 @@ server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
-def save(body):
-    request = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}/api/hammers", data=json.dumps(body).encode(), method="POST",
+def save(body, path="/api/hammers"):
+    request = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}", data=json.dumps(body).encode(), method="POST",
                                      headers={"Host": f"127.0.0.1:{dashboard.PORT}", "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=10) as r:
@@ -79,5 +79,29 @@ ok(save({**base, "off": ["hammer_t9"]}) == 400 and save({**base, "off": "hammer_
 ok(save(base) == 200 and pb.read_json(pb.OVERRIDES_FILE)["hammers"]["off"] == [], "left out: every hammer smashes")
 rack = dashboard.hammer_rack(bag({}, []), cards, {**pb.load_settings(), "hammer_off": ["hammer_t5"]})
 ok([h["smash"] for h in rack] == [True, True, True, True, False], "the dialog is told which are switched off")
+ok(save({"beetle": "purple"}, "/api/sacrifice") == 200 and pb.load_settings()["sacrifice"] == "purple", "Crafting Beetles: Purple is saved")
+ok(save({"beetle": "auto"}, "/api/sacrifice") == 200 and "sacrifice" not in pb.read_json(pb.OVERRIDES_FILE) and pb.load_settings()["sacrifice"] == "auto",
+   "Auto: back to the bot's own choice")
+ok(save({"beetle": "red"}, "/api/sacrifice") == 400 and save({}, "/api/sacrifice") == 400, "only Green, Auto or Purple")
+ok(save({"action": "tin_hammer", "auto": False}, "/api/switch") == 200 and pb.load_settings()["tin_hammer"] is False, "Auto Tin Hammer: switched off and saved")
+ok(save({"action": "tin_hammer", "auto": True}, "/api/switch") == 200 and pb.load_settings()["tin_hammer"] is True, "and back on")
 server.shutdown()
+
+# ---- Auto Tin Hammer: one from two Junk Cubes while you have none, whatever else is going on; off, the bot never makes one
+idle = {**settings("moss"), "make": None}
+cubes = bag({"junk_cube_t1": 2}, [])
+step = pb.next_craft(cubes, True, {**idle, "tin_hammer": True}, {})
+ok(step and step[0] == pb.TIN_HAMMER_CRAFT and step[2] == ["junk_cube_t1", "junk_cube_t1"], f"on, with no Tin Hammer: it makes one, even with nothing picked ({step})")
+ok(pb.side_craft({"tin_hammer": True}, pb.TIN_HAMMER_CRAFT) == "Auto Tin Hammer" and pb.side_craft({"tin_hammer": False}, pb.TIN_HAMMER_CRAFT) is None,
+   "and it's the switch's craft, not the task's")
+ok(pb.next_craft(bag({"junk_cube_t1": 2, "hammer_t1": 1}, [H("hammer_t1")]), True, {**idle, "tin_hammer": True}, {}) is None, "not while you have one")
+ok(pb.next_craft(bag({"junk_cube_t1": 2}, []), True, {**idle, "tin_hammer": True, "locked": ["junk_cube_t1"]}, {}) is None, "nor from Junk Cubes switched off")
+ok(pb.next_craft(cubes, True, {**idle, "tin_hammer": False}, {}) is None, "off: it doesn't")
+smash = bag({"junk_cube_t1": 2, "pond": 1, "pollen_rare": 1, "green": 3}, [])
+step = pb.next_craft(smash, True, settings("moss", tin_hammer=True), {})
+ok(step and step[0] == pb.TIN_HAMMER_CRAFT, f"a smash with no hammer: on, the Tin Hammer is made first ({step and step[0]})")
+ok(pb.next_craft(smash, True, settings("moss", tin_hammer=False), {}) is None and pb.craft_wait(smash, True, settings("moss", tin_hammer=False), {}) == "hammer",
+   "off: the smash waits for a hammer, and the dashboard says why")
+plan = pb.plan_make(smash, True, make("moss"), book, catalog, forge=False)
+ok(not any(s.get("out") == "hammer_t1" for s in plan.steps), "and the plan doesn't forge one")
 ok.done()

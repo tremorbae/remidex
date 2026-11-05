@@ -50,7 +50,10 @@
    "keys": [
     "ladybug",
     "purple"
-   ]
+   ],
+   "also": {
+    "cucumber": "counts in some recipes only, never for a flower. Click it to see which."
+   }
   },
   "beetle_4": {
    "label": "Any Mithril Beetle",
@@ -719,7 +722,7 @@
     "nectar",
     "cattail"
    ],
-   "note": "Random: one or the other.",
+   "note": "Low odds, and random: Nectar or Cattail.",
    "pick": true
   },
   {
@@ -733,7 +736,7 @@
     "moss",
     "gunpowder"
    ],
-   "note": "Random: one of the three.",
+   "note": "Low odds, and random: Pinecone, Moss or Gunpowder.",
    "pick": true
   },
   {
@@ -932,7 +935,7 @@
     "nectar",
     "cattail"
    ],
-   "note": "Untested: the Striped Cucumber Beetle in place of a Ladybug or Purple Beetle. It's newer than the recipe book, and beetle.wiki says it can't be turned into a flower, so it may not count. If the game says NOTHING HAPPENED, only this recipe goes.",
+   "note": "Low odds, and random: Nectar or Cattail. The Striped Cucumber Beetle works here in place of a Ladybug or Purple Beetle (tested on remilia.net), though it can't be turned into a flower.",
    "pick": true
   },
   {
@@ -981,7 +984,10 @@
    ]
   },
   "bumblebee": {
-   "source": "Hunts only. No known recipe."
+   "source": "Hunts and free claims. The Bronze + Bronze beetle tier-up smash can give one now and then.",
+   "uses": [
+    "Can't be turned into a flower."
+   ]
   },
   "christmas": {
    "source": "Catch only, during the December holiday event."
@@ -996,7 +1002,7 @@
    "source": "Catch only, during the Halloween event."
   },
   "golden": {
-   "source": "An ultra-rare drop, or a Diamond tier-up smash.",
+   "source": "An ultra-rare drop.",
    "uses": [
     "Can't be turned back into a flower."
    ]

@@ -2,7 +2,7 @@
 
 import time
 
-from remidex.core import HAMMERS, OVERRIDES_FILE, notify, read_json, stamp
+from remidex.core import HAMMERS, OVERRIDES_FILE, PURPLE, SACRIFICE, notify, read_json, stamp
 
 
 SOCIAL_SETTINGS = ("pokes", "friend_requests", "view_profiles")  # the dashboard's switches for what reaches other people
@@ -40,12 +40,16 @@ def valid_make(make):
             and is_number(make.get("start")) and is_number(make.get("set_at")) and isinstance(make.get("paused", False), bool))
 
 
-def valid_skipped(skipped):
-    """Steps skipped on the dashboard, for one Auto make or quest: {"task": its id (see task_id), "labels": [recipe labels]},
-    or None."""
-    if not (isinstance(skipped, dict) and isinstance(skipped.get("task"), str) and isinstance(skipped.get("labels"), list)):
+def valid_steps(steps):
+    """What's picked on the dashboard for the steps of one Auto make or quest, by recipe label: {"task": its id (see
+    task_id), "skipped": [labels done last], "first": the label worked on first or None, "sacrifice": {label: the beetle
+    it sacrifices}, "hammer": {label: the hammer it uses}}, or None."""
+    if not (isinstance(steps, dict) and isinstance(steps.get("task"), str)):
         return None
-    return {"task": skipped["task"], "labels": [label for label in skipped["labels"] if isinstance(label, str)]}
+    picked = lambda key, allowed: {k: v for k, v in (steps[key] if isinstance(steps.get(key), dict) else {}).items() if v in allowed}  # noqa: E731
+    return {"task": steps["task"], "skipped": [k for k in steps["skipped"] if isinstance(k, str)] if isinstance(steps.get("skipped"), list) else [],
+            "first": steps["first"] if isinstance(steps.get("first"), str) else None,
+            "sacrifice": picked("sacrifice", (SACRIFICE, PURPLE)), "hammer": picked("hammer", HAMMERS)}
 
 
 def load_settings():
@@ -66,18 +70,20 @@ def load_settings():
         **{action: switch(action) for action in SOCIAL_SETTINGS},
         "beetleboy": {action: switch(action) for action in BEETLE_SETTINGS},
         "junk_cubes": switch("junk_cubes", False),
+        "tin_hammer": switch("tin_hammer"),  # Auto Tin Hammer: the bot makes one when you have none (see tin_hammer_crafts), and plans may forge one to smash with
         "goal": overrides.get("goal") if isinstance(overrides.get("goal"), str) else None,
         "goal_again": overrides.get("goal_again") is True,
         "goal_set_at": overrides.get("goal_set_at"),
         "goal_paused": overrides.get("goal_paused") is True,
         "make": overrides["make"] if valid_make(overrides.get("make")) else None,
+        "sacrifice": overrides["sacrifice"] if overrides.get("sacrifice") in (SACRIFICE, PURPLE) else "auto",  # Crafting Beetles in Analytics: what every smash sacrifices (see pick_sacrifice)
         "max_break_chance": HAMMER_LIMIT,
         "hammer_order": list(dict.fromkeys(order + HAMMERS)),
         "hammer_limits": {h: limits[h] if is_number(limits.get(h)) else HAMMER_LIMIT for h in HAMMERS},
         "hammer_timing": picked.get("timing") is not False,
         "hammer_off": [h for h in HAMMERS if h in (picked.get("off") if isinstance(picked.get("off"), list) else [])],  # never smashed with (still upgraded)
         "locked": sorted({k for k in overrides["locked"] if isinstance(k, str)}) if isinstance(overrides.get("locked"), list) else [],  # items switched off on the dashboard: the bot never uses them
-        "skipped": valid_skipped(overrides.get("skipped")),  # steps skipped on the dashboard: done last
+        "steps": valid_steps(overrides.get("steps")),  # what's picked for the plan's steps on the dashboard (see step_picks)
     }
 
 
