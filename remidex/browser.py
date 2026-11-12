@@ -32,8 +32,8 @@ from remidex.settings import BEETLE_SETTINGS, SOCIAL_SETTINGS
 # profile can't be opened by the bot's older Chromium. The installers delete it; the sign-in is in cookies.json.)
 PROFILE_DIR = APP_DIR / "browser-profile"
 SIGN_IN_WAIT = 45  # how long a run gives the page to restore its sign-in
-FORM_WAIT = 30  # how long RemiliaNET's sign-in page gets to show its form (seconds)
-OPEN_WAIT = 12  # how long a click on one of the site's Sign ins gets to open RemiliaNET's sign-in page (seconds)
+FORM_WAIT = 60  # how long RemiliaNET's sign-in page gets to show its form (seconds; a slow server needs a while)
+OPEN_WAIT = 45  # how long the site's Sign in gets to open RemiliaNET's sign-in page, clicked again now and then (seconds)
 SITE_SIGN_IN = re.compile(r"^sign in", re.I)  # (the front page's logo, on a first visit: "Sign in or register")
 SITE_SIGN_IN_TEXT = re.compile(r"^\s*sign in\s*$", re.I)  # (the "SIGN IN or register" box at the top right, otherwise)
 CODE_WAIT = 5 * 60  # how long a sign-in waits for your two-factor code (about as long as RemiliaNET's sign-in page lasts)
@@ -160,7 +160,7 @@ class Site:
         if saved:
             self.context.add_cookies(saved)
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
-        self.page.goto(SITE, wait_until="load", timeout=60000)
+        self.page.goto(SITE, wait_until="load", timeout=90000)
 
     def api(self, method, path, body=None):
         """Sends the request (with body as JSON, if given) from inside the page, so it carries the website's sign-in.
@@ -213,24 +213,34 @@ class Site:
 
     def restore_sign_in(self):
         """Reloads the page so it renews its sign-in."""
-        self.page.reload(wait_until="load", timeout=60000)
+        self.page.reload(wait_until="load", timeout=90000)
         self.require_sign_in()
 
     def open_sign_in(self):
         """Opens RemiliaNET's sign-in page with the site's own Sign in. Which one there is depends on the front page the
         site shows: the "SIGN IN or register" box at the top right, or (on a first visit) its logo. Tries each one it can
-        see until the sign-in page opens. Returns whether it did."""
-        page = self.page
-        for kind in (page.get_by_text(SITE_SIGN_IN_TEXT), page.get_by_role("button", name=SITE_SIGN_IN), page.get_by_role("link", name=SITE_SIGN_IN)):
-            for i in range(kind.count()):
-                try:
-                    if not kind.nth(i).is_visible():
-                        continue
-                    kind.nth(i).click(force=True, timeout=5000)
-                    page.wait_for_url(re.compile(r"/oidc/"), timeout=OPEN_WAIT * 1000)
-                    return True
-                except PlaywrightError:
-                    continue  # not that one: the next
+        see, and again for up to OPEN_WAIT (on a slow server, a click before the page is ready does nothing), until the
+        sign-in page starts to open (the rest waits for its form). Returns whether it did."""
+        page, tried = self.page, 0
+        deadline = time.time() + OPEN_WAIT
+        while time.time() < deadline:
+            for kind in (page.get_by_text(SITE_SIGN_IN_TEXT), page.get_by_role("button", name=SITE_SIGN_IN), page.get_by_role("link", name=SITE_SIGN_IN)):
+                for i in range(kind.count()):
+                    try:
+                        if not kind.nth(i).is_visible():
+                            continue
+                        tried += 1
+                        kind.nth(i).click(force=True, timeout=5000)
+                        page.wait_for_url(re.compile(r"/oidc/"), wait_until="commit", timeout=10000)
+                        return True
+                    except PlaywrightError:
+                        if "/oidc/" in page.url:
+                            return True
+                        continue  # not that one (or not yet): the next
+            if "/oidc/" in page.url:
+                return True
+            self.wait(1)
+        log(f"Sign-in: RemiliaNET's sign-in page didn't open (clicked a Sign in {tried} times; the page is at {page.url[:80]}).")
         return False
 
     def fill_sign_in(self, email, password):

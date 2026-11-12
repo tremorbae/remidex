@@ -60,15 +60,16 @@ def first_line(e):
 
 
 def memory():
-    """How much memory this server is using now, and at most so far (from Linux's cgroup files), for sizing the website:
-    ", memory 210 MB (most 340 MB)". Empty where those files don't exist (a Mac)."""
-    def mb(name):
-        try:
-            return int(Path("/sys/fs/cgroup", name).read_text()) // 2 ** 20
-        except (OSError, ValueError):
-            return None
-    now, most = mb("memory.current"), mb("memory.peak")
-    return f", memory {now} MB" + (f" (most {most} MB)" if most is not None else "") if now is not None else ""
+    """How much memory this server is really using (from Linux's cgroup files, without the file cache it can let go of
+    whenever it needs to), for sizing the website: ", memory 210 MB in use (510 MB with cache)". Empty where those files
+    don't exist (a Mac)."""
+    try:
+        total = int(Path("/sys/fs/cgroup/memory.current").read_text())
+        stat = dict(line.split() for line in Path("/sys/fs/cgroup/memory.stat").read_text().splitlines())
+    except (OSError, ValueError):
+        return ""
+    cache = int(stat.get("inactive_file", 0)) + int(stat.get("active_file", 0))
+    return f", memory {(total - cache) // 2 ** 20} MB in use ({total // 2 ** 20} MB with cache)"
 
 
 def reach():
