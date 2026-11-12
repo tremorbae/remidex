@@ -9,7 +9,12 @@ SOCIAL_SETTINGS = ("pokes", "friend_requests", "view_profiles")  # the dashboard
 # BeetleBoy: the free claims whenever they're ready, then hunts with whatever cheese there is (each has its switch on the
 # dashboard). Actions are named as the website names them.
 BEETLE_SETTINGS = ("catchBeetle", "claimUBC", "junkFaucet", "beetleHunt")
-POKE_GAP = (60, 120)  # seconds from one poke to the next: a random wait between these
+# The bot works in short rounds with Chrome closed in between, so the Mac stays cool: a round pokes up to
+# POKES_PER_SESSION people, POKE_GAP seconds apart, and then Chrome rests SESSION_REST seconds. (About as many pokes a
+# day as one every 1–2 minutes, but with Chrome open a few minutes in every half hour, not all day.)
+POKE_GAP = (4, 10)  # seconds from one poke to the next within a round: a random wait between these
+POKES_PER_SESSION = 20
+SESSION_REST = (20 * 60, 30 * 60)  # how long Chrome stays closed after a round: a random wait between these
 HAMMER_LIMIT = 25  # a hammer smashes while its break chance is under this, unless its own limit is set on the dashboard
 # What's worth a Mac notification (a hammer breaking isn't: the log and the dashboard say so).
 ALERT_KINDS = {"signed_out": True, "streak": True, "quest_done": True, "make_done": True, "level_up": True, "achievement": True, "hammer_broke": False}
@@ -67,6 +72,8 @@ def load_settings():
     return {
         "friends_first": False,  # everyone due, in random order, rather than friends first
         "gap": POKE_GAP,
+        "batch": POKES_PER_SESSION,
+        "rest": SESSION_REST,
         **{action: switch(action) for action in SOCIAL_SETTINGS},
         "beetleboy": {action: switch(action) for action in BEETLE_SETTINGS},
         "junk_cubes": switch("junk_cubes", False),

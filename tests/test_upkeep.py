@@ -1,6 +1,7 @@
 """The app keeping itself in good shape: the bot's own profile views don't crowd the feed or the log, hiccups it gets over
-are calm notes, the log is trimmed without counting anything twice, sure crafts go before long shots, and the Mac stays
-awake on power (temp files, fakes; nothing real is run)."""
+are calm notes, the log is trimmed without counting anything twice, sure crafts go before long shots, the bot's browser
+is its own (not your Google Chrome) and draws calmly, and the Mac is never kept awake (temp files, fakes; nothing real
+is run)."""
 import tempfile
 import time
 from pathlib import Path
@@ -76,21 +77,47 @@ order = [c[0] for c in pb.craft_candidates(lotus, True, settings, fallback=False
 ok(moss in order and all(pb.long_shot(pb.recipe_named(label)) for label in order[order.index(moss):]), f"the 1-in-40 Moss smash after every sure step ({order})")
 ok(pb.next_craft(lotus, True, settings, {})[0] != moss, "so the Green Beetles go to a sure step first")
 
-# ---- staying awake on power
-started = []
+# ---- the bot's browser: Playwright's own headless Chromium (not your Google Chrome), drawing calmly
+from remidex import browser  # noqa: E402
+import os  # noqa: E402
+launched, scripts = [], []
 
 
-class Proc:
-    def __init__(self, args):
-        started.append(args)
-
-    def poll(self):
-        return None
+class Page:
+    def goto(self, *a, **k):
+        pass
 
 
-loop.subprocess.Popen = Proc
-loop._AWAKE["proc"] = None
-loop.stay_awake()
-loop.stay_awake()
-ok(len(started) == 1 and started[0][:2] == ["caffeinate", "-s"] and started[0][-2] == "-w", f"caffeinate keeps it awake on power, once, for as long as the bot runs ({started})")
+class Context:
+    pages = []
+
+    def add_init_script(self, script):
+        scripts.append(script)
+
+    def add_cookies(self, cookies):
+        pass
+
+    def new_page(self):
+        return Page()
+
+
+fake = type("Playwright", (), {"chromium": type("Chromium", (), {"launch_persistent_context": staticmethod(lambda folder, **k: (launched.append((folder, k)), Context())[1])})()})()
+support.patch(PROFILE_DIR=tmp / "profile", COOKIES_FILE=tmp / "cookies.json")
+os.environ.pop("REMIDEX_CHROME", None)
+browser.Site(fake)
+folder, how = launched[-1]
+ok(how.get("channel") is None and how.get("headless") is True, f"Playwright's own headless Chromium, not your Google Chrome ({how.get('channel')})")
+ok(folder == tmp / "profile" and 'PROFILE_DIR = APP_DIR / "browser-profile"' in Path(browser.__file__).read_text(), "in its own profile folder, not the one your Google Chrome made")
+ok(scripts == [browser.CALM] and "requestAnimationFrame" in browser.CALM, "the page draws once a second, not 60 times")
+browser.Site(fake, calm=False)
+ok(scripts == [browser.CALM], "signing in leaves RemiliaNET's pages as they are")
+os.environ["REMIDEX_CHROME"] = "chrome"
+browser.Site(fake)
+ok(launched[-1][1].get("channel") == "chrome", "REMIDEX_CHROME=chrome still picks an installed Chrome (a server, say)")
+os.environ.pop("REMIDEX_CHROME")
+mac = (support.ROOT / "install_browser.sh").read_text()
+ok("Google Chrome.app" not in mac and "playwright install --only-shell chromium" in mac, "the Mac installer gets that Chromium, and doesn't need Google Chrome")
+ok(mac.index('"$LAUNCHCTL" enable') < mac.index('"$LAUNCHCTL" bootstrap'), "the installer switches its jobs back on before starting them")
+ok(all(f'"RemiDex {n}"' in mac for n in ("bot", "feed watcher", "dashboard")), "each job has a clear name in Login Items, not \"python\"")
+ok(not hasattr(loop, "stay_awake"), "the Mac is never kept awake")
 ok.done()

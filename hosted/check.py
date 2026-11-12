@@ -59,6 +59,18 @@ def first_line(e):
     return (str(e).strip().splitlines() or ["?"])[0][:200]
 
 
+def memory():
+    """How much memory this server is using now, and at most so far (from Linux's cgroup files), for sizing the website:
+    ", memory 210 MB (most 340 MB)". Empty where those files don't exist (a Mac)."""
+    def mb(name):
+        try:
+            return int(Path("/sys/fs/cgroup", name).read_text()) // 2 ** 20
+        except (OSError, ValueError):
+            return None
+    now, most = mb("memory.current"), mb("memory.peak")
+    return f", memory {now} MB" + (f" (most {most} MB)" if most is not None else "") if now is not None else ""
+
+
 def reach():
     """Step 1: RemiliaNET in a fresh Chrome, signed out. Returns whether it loaded properly."""
     name = "1. RemiliaNET loads from this server"
@@ -66,8 +78,10 @@ def reach():
     started = time.time()
     try:
         with sync_playwright() as playwright:
-            context = playwright.chromium.launch_persistent_context(APP_DIR / "reach-profile", channel=os.environ.get("REMIDEX_CHROME", "chrome"), headless=True,
+            # The bot's own browser, as it opens it (see browser.Site): Playwright's headless Chromium, drawing calmly.
+            context = playwright.chromium.launch_persistent_context(APP_DIR / "reach-profile", channel=os.environ.get("REMIDEX_CHROME") or None, headless=True,
                                                                     args=["--blink-settings=imagesEnabled=false"], reduced_motion="reduce")
+            context.add_init_script(browser.CALM)
             try:
                 page = context.pages[0] if context.pages else context.new_page()
                 response = page.goto(SITE, wait_until="load", timeout=90000)
@@ -77,6 +91,7 @@ def reach():
                 sign_in = page.get_by_text(browser.SITE_SIGN_IN_TEXT).count() + page.get_by_role("button", name=browser.SITE_SIGN_IN).count()
                 api = as_dict(page.evaluate(browser.FETCH, ["GET", "/api/profile/whoami", None])).get("status")
                 agent = page.evaluate("navigator.userAgent")
+                used = memory()
             finally:
                 context.close()
     except PlaywrightError as e:
@@ -85,7 +100,7 @@ def reach():
     status = response.status if response else None
     ok = status == 200 and not challenge and sign_in > 0 and api == 401
     step(name, ok, f"page HTTP {status}, title {title!r}, Cloudflare challenge: {'YES' if challenge else 'no'}, sign-in button: {'found' if sign_in else 'MISSING'}, "
-                   f"API answers (401 expected while signed out): {api}, {time.time() - started:.0f}s. Browser: {agent[:90]}")
+                   f"API answers (401 expected while signed out): {api}, {time.time() - started:.0f}s{used}. Browser: {agent[:90]}")
     return ok
 
 
@@ -126,6 +141,7 @@ def sign_in_and_reopen(email, password):
             try:
                 again, status = site.signed_in_handle(browser.SIGN_IN_WAIT)
                 game_status, game = site.api("GET", "/api/beetle/user") if again else (None, None)
+                used = memory()
             finally:
                 site.close()
     except (PlaywrightError, RuntimeError, OSError) as e:
@@ -134,7 +150,7 @@ def sign_in_and_reopen(email, password):
     game = as_dict(game)
     level = as_dict(game.get("user") or game).get("level")
     ok = again == handle and game_status == 200
-    step(name, ok, f"signed in again as ~{again} (whoami HTTP {status}); BeetleBoy game read: HTTP {game_status}" + (f", level {level}" if level is not None else ""))
+    step(name, ok, f"signed in again as ~{again} (whoami HTTP {status}); BeetleBoy game read: HTTP {game_status}" + (f", level {level}" if level is not None else "") + used)
 
 
 def run(email, password):

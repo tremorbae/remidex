@@ -28,7 +28,9 @@ from remidex.core import (
 from remidex.settings import BEETLE_SETTINGS, SOCIAL_SETTINGS
 
 
-PROFILE_DIR = APP_DIR / "chrome-profile"
+# The bot's browser profile. (Not chrome-profile, which your Google Chrome made when the bot used it: a newer Chrome's
+# profile can't be opened by the bot's older Chromium. The installers delete it; the sign-in is in cookies.json.)
+PROFILE_DIR = APP_DIR / "browser-profile"
 SIGN_IN_WAIT = 45  # how long a run gives the page to restore its sign-in
 FORM_WAIT = 30  # how long RemiliaNET's sign-in page gets to show its form (seconds)
 OPEN_WAIT = 12  # how long a click on one of the site's Sign ins gets to open RemiliaNET's sign-in page (seconds)
@@ -50,6 +52,20 @@ CANT_DO = {
     "webauthn-authenticate.ftl": "RemiliaNET asked for a passkey or security key, which RemiDex can't use. An authenticator app code works",
     "login-page-expired.ftl": "RemiliaNET's sign-in page expired. Sign in again",
 }
+# Nobody sees the bot's page, but RemiliaNET's front page redraws a canvas 60 times a second, which kept Chrome busy
+# around the clock. This, run in the page before the site's own code, lets it draw once a second and stops CSS
+# animations: a tenth of the CPU, and the site and its sign-in work the same. (Not used while signing in.)
+CALM = """(() => {
+  const later = window.setTimeout.bind(window), stop = window.clearTimeout.bind(window);
+  window.requestAnimationFrame = draw => later(() => draw(performance.now()), 1000);
+  window.cancelAnimationFrame = id => stop(id);
+  const still = () => {
+    const style = document.createElement("style");
+    style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; }";
+    (document.head || document.documentElement).append(style);
+  };
+  document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", still) : still();
+})();"""
 # Runs inside the page: same-origin requests carry the authToken cookie the website keeps fresh.
 FETCH = """async ([method, path, payload]) => {
   try {
@@ -129,13 +145,16 @@ UPLOAD = """async field => {
 class Site:
     """Chrome with remilia.net open, unseen."""
 
-    def __init__(self, playwright):
+    def __init__(self, playwright, calm=True):
         PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-        # Your installed Chrome. Unseen, the page needs no animations ("reduced motion") or pictures: that's a third of
-        # Chrome's CPU, and the site and its sign-in work the same. (The bot's own downloads, like item icons, don't go
-        # through the page.)
-        self.context = playwright.chromium.launch_persistent_context(PROFILE_DIR, channel=os.environ.get("REMIDEX_CHROME", "chrome"), headless=True,
+        # Playwright's own headless Chromium, not your Google Chrome: your Chrome is left alone (macOS took the bot's
+        # copy for yours, so yours wouldn't open a window). REMIDEX_CHROME=chrome uses your installed Chrome instead.
+        # Unseen, the page needs no animations ("reduced motion", and see CALM) or pictures, and the site and its
+        # sign-in work the same. (The bot's own downloads, like item icons, don't go through the page.)
+        self.context = playwright.chromium.launch_persistent_context(PROFILE_DIR, channel=os.environ.get("REMIDEX_CHROME") or None, headless=True,
                                                                      args=["--blink-settings=imagesEnabled=false"], reduced_motion="reduce")
+        if calm:
+            self.context.add_init_script(CALM)
         # Chrome drops session-only cookies when it quits, and the sign-in may use them; put back the ones saved last run.
         saved = read_json(COOKIES_FILE).get("cookies")
         if saved:
@@ -398,7 +417,7 @@ def sign_in_with(email, password, ask_code=None):
         return None, "RemiDex is already signed in"
     first_time = new_here()
     with sync_playwright() as playwright:
-        site = Site(playwright)
+        site = Site(playwright, calm=False)  # (RemiliaNET's sign-in pages exactly as they are)
         try:
             handle, _ = site.signed_in_handle(3)
             if not handle:

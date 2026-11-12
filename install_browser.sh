@@ -1,7 +1,8 @@
 #!/bin/bash
 # Installs RemiDex on this Mac: the bot (poke_browser.py) as two always-on launchd jobs, one that does its work on its own
 # schedule and one that notes who shows up in the activity feed, and a third that serves the dashboard at
-# http://remidex.localhost:8642 (dashboard.py). The first time, it asks before installing, then opens Chrome for you to sign in.
+# http://remidex.localhost:8642 (dashboard.py). The bot uses its own headless Chromium (Playwright's), never your Google
+# Chrome. The first time, it asks before installing, then opens RemiDex for you to sign in.
 #
 #   ./install_browser.sh                           install, or update after you've changed or downloaded new files
 #   ./install_browser.sh --check                   only check that this Mac is ready; changes nothing
@@ -25,6 +26,9 @@ DASH_LOG="$HOME/Library/Logs/remilianet-dashboard.log"
 PLAYWRIGHT_VERSION=1.60.0  # the last release that runs on macOS's built-in Python 3.9
 PORT=8642
 FILES=(poke_browser.py store.py dashboard.py dashboard.html signin.html catalog.json recipes.json quests.py)  # what gets copied to $APP_DIR
+# Each job starts through a small launcher with a clear name, so System Settings > General > Login Items lists RemiDex's
+# jobs by these names instead of three items called "python".
+LAUNCHERS=("RemiDex bot" "RemiDex feed watcher" "RemiDex dashboard")
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LAUNCHCTL="${LAUNCHCTL:-launchctl}"  # a test can swap this for `true`, so nothing real is started or stopped
 
@@ -62,7 +66,7 @@ if [[ $UNINSTALL == 1 ]]; then
   fi
   stop_jobs
   rm -f "$PLIST" "$FEED_PLIST" "$DASH_PLIST"
-  for f in "${FILES[@]}"; do rm -f "$APP_DIR/$f"; done
+  for f in "${FILES[@]}" "${LAUNCHERS[@]}"; do rm -f "$APP_DIR/$f"; done
   rm -rf "$APP_DIR/remidex"
   rm -rf "$APP_DIR/venv"
   if [[ $EVERYTHING == 1 ]]; then
@@ -83,7 +87,6 @@ preflight() {
   echo "Checking this Mac..."
   if [[ "$(uname)" == "Darwin" ]]; then ok "macOS"; else fail "RemiDex only runs on a Mac for now."; fi
   if [[ "$(id -u)" != 0 ]]; then ok "running as you, not as root"; else fail "Run this as yourself, not with sudo."; fi
-  if [[ -d "/Applications/Google Chrome.app" ]]; then ok "Google Chrome"; else fail "Google Chrome isn't in /Applications. Install it from google.com/chrome, then run this again."; fi
   if xcode-select -p >/dev/null 2>&1 && /usr/bin/python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))' 2>/dev/null; then
     ok "Python $(/usr/bin/python3 -c 'import platform; print(platform.python_version())')"
   else
@@ -138,6 +141,10 @@ if [[ ! -x "$APP_DIR/venv/bin/python" ]]; then
   /usr/bin/python3 -m venv "$APP_DIR/venv"
 fi
 "$APP_DIR/venv/bin/pip" install --quiet --disable-pip-version-check "playwright==$PLAYWRIGHT_VERSION"
+# The bot's own browser: Playwright's headless Chromium (about 100 MB, once; kept in ~/Library/Caches/ms-playwright).
+# It's a separate program from Google Chrome, so your Chrome opens normally while the bot works.
+"$APP_DIR/venv/bin/python" -m playwright install --only-shell chromium
+rm -rf "$APP_DIR/chrome-profile"  # the profile from when the bot used your Google Chrome (the sign-in is in cookies.json)
 for f in "${FILES[@]}"; do cp "$HERE/$f" "$APP_DIR/$f"; done
 rm -rf "$APP_DIR/remidex" && mkdir "$APP_DIR/remidex" && cp "$HERE"/remidex/*.py "$APP_DIR/remidex/"  # the bot's parts
 
@@ -145,8 +152,11 @@ rm -rf "$APP_DIR/remidex" && mkdir "$APP_DIR/remidex" && cp "$HERE"/remidex/*.py
 SIGN_IN=0
 if [[ $FRESH == 1 ]] || grep -q '"needs_login": true' "$APP_DIR/state.json" 2>/dev/null; then SIGN_IN=1; fi
 
-# write_plist PATH LABEL SCRIPT FLAG LOGFILE: an always-on job running SCRIPT FLAG.
+# write_plist PATH LABEL NAME SCRIPT FLAG LOGFILE: an always-on job running SCRIPT FLAG, through a launcher called NAME.
 write_plist() {
+  local launcher="$APP_DIR/$3"
+  printf '#!/bin/sh\nexec "%s" "%s" %s\n' "$APP_DIR/venv/bin/python" "$APP_DIR/$4" "$5" > "$launcher"
+  chmod 755 "$launcher"
   cat > "$1" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -156,18 +166,16 @@ write_plist() {
   <string>$2</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$APP_DIR/venv/bin/python</string>
-    <string>$APP_DIR/$3</string>
-    <string>$4</string>
+    <string>$launcher</string>
   </array>
   <key>KeepAlive</key>
   <true/>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>$5</string>
+  <string>$6</string>
   <key>StandardErrorPath</key>
-  <string>$5</string>
+  <string>$6</string>
 </dict>
 </plist>
 EOF
@@ -175,10 +183,12 @@ EOF
 
 stop_jobs
 mkdir -p "$HOME/Library/LaunchAgents"
-write_plist "$FEED_PLIST" "$FEED_LABEL" poke_browser.py --watch-feed "$LOG"
-write_plist "$PLIST" "$LABEL" poke_browser.py --scheduled "$LOG"
-write_plist "$DASH_PLIST" "$DASH_LABEL" dashboard.py --serve "$DASH_LOG"
+write_plist "$FEED_PLIST" "$FEED_LABEL" "${LAUNCHERS[1]}" poke_browser.py --watch-feed "$LOG"
+write_plist "$PLIST" "$LABEL" "${LAUNCHERS[0]}" poke_browser.py --scheduled "$LOG"
+write_plist "$DASH_PLIST" "$DASH_LABEL" "${LAUNCHERS[2]}" dashboard.py --serve "$DASH_LOG"
 
+# A job switched off (launchctl disable, or in Login Items) can't be started until it's switched back on.
+for label in "$LABEL" "$FEED_LABEL" "$DASH_LABEL"; do "$LAUNCHCTL" enable "gui/$(id -u)/$label"; done
 "$LAUNCHCTL" bootstrap "gui/$(id -u)" "$FEED_PLIST"
 "$LAUNCHCTL" bootstrap "gui/$(id -u)" "$PLIST"
 "$LAUNCHCTL" bootstrap "gui/$(id -u)" "$DASH_PLIST"
@@ -195,7 +205,7 @@ if [[ $FRESH == 1 ]]; then
   echo
   echo "Done. RemiDex is running: http://remidex.localhost:$PORT"
   echo "Sign in there with your RemiliaNET account. Everything is OFF until you switch it on."
-  echo "macOS may say a background item was added: that's RemiDex (System Settings > General > Login Items)."
+  echo "macOS may say background items were added: that's RemiDex (in System Settings > General > Login Items, as ${LAUNCHERS[0]}, ${LAUNCHERS[1]} and ${LAUNCHERS[2]})."
   echo "To stop and remove it: ./install_browser.sh --uninstall"
 elif [[ $SIGN_IN == 1 ]]; then
   echo "Updated. Sign in to RemiDex: http://remidex.localhost:$PORT"

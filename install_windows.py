@@ -1,6 +1,7 @@
 """Installs RemiDex on this Windows PC: the bot (poke_browser.py), the activity-feed watcher and the dashboard at
 http://remidex.localhost:8642 (dashboard.py), kept running by a small keeper that starts when you sign in to Windows (from your
-Startup folder). The first time, it asks before installing, then opens Chrome for you to sign in.
+Startup folder). The bot uses its own headless Chromium (Playwright's), never your Google Chrome. The first time, it asks
+before installing, then opens RemiDex for you to sign in.
 
     py install_windows.py                           install, or update after you've downloaded new files
     py install_windows.py --check                   only check that this PC is ready; changes nothing
@@ -32,7 +33,6 @@ PORT = 8642
 FILES = ["poke_browser.py", "store.py", "dashboard.py", "dashboard.html", "signin.html", "catalog.json", "recipes.json", "quests.py"]  # what gets copied to APP_DIR
 STARTUP = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "Microsoft/Windows/Start Menu/Programs/Startup/RemiDex.cmd"
 JOBS_FILE = APP_DIR / "jobs.json"  # the keeper's, with its process id (see remidex/keeper.py)
-CHROME = [Path(os.environ.get(v) or "-") / "Google/Chrome/Application/chrome.exe" for v in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 ON_ITS_OWN = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 UTF8 = {**os.environ, "PYTHONUTF8": "1"}  # (the log has emoji and people's names in it)
@@ -78,7 +78,6 @@ def preflight():
     print("Checking this PC...")
     check(sys.platform == "win32", "Windows", "This installer is for Windows. On a Mac, run ./install_browser.sh instead.")
     check(sys.version_info >= (3, 9), f"Python {sys.version.split()[0]}", "Python 3.9 or newer is needed: get it from python.org, then run this again.")
-    check(any(p.exists() for p in CHROME), "Google Chrome", "Google Chrome isn't installed. Install it from google.com/chrome, then run this again.")
     owner = ours_on_port()
     whose = "free" if owner is None else "RemiDex's own (it's already installed)"
     check(owner is not False, f"port {PORT} is {whose}", f"Something else is using port {PORT}. Close it, then run this again.")
@@ -165,7 +164,10 @@ def install(yes):
         print("Setting up Playwright (one time, about a minute)...")
         subprocess.run([sys.executable, "-m", "venv", str(APP_DIR / "venv")], check=True)
     subprocess.run([str(VENV_PYTHON), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", f"playwright=={PLAYWRIGHT_VERSION}"], check=True)
+    # The bot's own browser: Playwright's headless Chromium (about 100 MB, once), never your Google Chrome.
+    subprocess.run([str(VENV_PYTHON), "-m", "playwright", "install", "--only-shell", "chromium"], check=True)
     stop()
+    shutil.rmtree(APP_DIR / "chrome-profile", ignore_errors=True)  # from when the bot used your Google Chrome (the sign-in is in cookies.json)
     copy_files()
     sign_in = fresh or signed_out()  # (signing in happens on RemiDex's own sign-in page, opened at the end)
     STARTUP.parent.mkdir(parents=True, exist_ok=True)

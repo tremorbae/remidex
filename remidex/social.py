@@ -54,7 +54,7 @@ MAX_RETRIES = 3
 FEED_IDLE_TIMEOUT = 300  # reconnect if the feed sends nothing for this long
 FEED_RECONNECT = 10
 # One poke at a time, around the clock: friends whose cooldown is up first, then everyone else.
-# How far apart they are: see settings.POKE_GAP.
+# How far apart they are: see settings.POKE_GAP (in rounds: POKES_PER_SESSION, then SESSION_REST).
 MAX_TRIES_PER_SLOT = 5  # people found to be on cooldown don't use up a slot; try this many in a row at most
 DISCOVER_BELOW = 50  # look for more people when fewer than this many non-friends are due
 CRAWL_PAGES_PER_RUN = 20  # friend-list pages read per look, to find more people
@@ -313,7 +313,7 @@ def befriend(site, handle, state, looked=None):
 def poke_next(site, state, dry_run, settings):
     """Pokes one person: the friend whose cooldown ended longest ago, or else someone else who is due
     (or, with friends_first off, anyone due at random).
-    Returns when the poke was sent, or None if nobody was poked."""
+    Returns when the poke was sent (with pokes on manual: the friend request), or None if nobody was poked."""
     handle = site.require_sign_in()
     if state.get("handle") != handle:
         # First run, or signed in as someone else: start a fresh schedule.
@@ -355,9 +355,7 @@ def poke_next(site, state, dry_run, settings):
             print(f"Next poke: ~{queue[0]}" if settings["pokes"] else "Pokes are on manual.")
         return
     if not settings["pokes"]:
-        if settings["friend_requests"]:
-            ask_next(site, state, others_due, counts)
-        return None
+        return ask_next(site, state, others_due, counts) if settings["friend_requests"] else None
 
     for target in queue[:MAX_TRIES_PER_SLOT]:
         poked_at = time.time()
@@ -392,7 +390,8 @@ def ask_friend(site, handle, state, counts):
 
 def ask_next(site, state, others_due, counts):
     """With pokes on manual but friend requests on auto: sends a friend request to the next person who'd have been
-    poked (anyone already asked, or who declined, is skipped; each person is looked at once a day at most)."""
+    poked (anyone already asked, or who declined, is skipped; each person is looked at once a day at most). Returns when
+    it did, or None if there was nobody to ask."""
     asked = state.setdefault("asked_at", {})
     now = time.time()
     for handle in [h for h, t in asked.items() if now - t >= ASK_AGAIN]:
@@ -400,10 +399,11 @@ def ask_next(site, state, others_due, counts):
     skip = set(asked) | set(state.get("friend_requested") or {}) | set(state.get("friend_declined") or {})
     target = next((h for h in others_due if h not in skip), None)
     if not target:
-        return
+        return None
     asked[target] = now
     outcome = ask_friend(site, target, state, counts)
     log(f"~{target} (other): {outcome} (pokes are on manual). Today: {counts['pokes']} pokes, {counts['friend_requests']} friend requests.")
+    return now
 
 
 def feed_handles(event):

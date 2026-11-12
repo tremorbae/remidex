@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Poke one RemiliaNET user every few minutes, around the clock, without an API key: friends whose
+"""Poke RemiliaNET users in short rounds, around the clock, without an API key: friends whose
 24h cooldown is up first, then everyone else it can find. After poking someone who isn't a friend it sends
 them a friend request (or accepts theirs), and never asks anyone who declined again. Also views the profile
 of everyone else who shows up in the activity feed (the site notifies them), and plays BeetleBoy: the daily
 cheese, the free beetle (every 2 hours) and the Cheeseman's junk as soon as each is ready, then every hunt the cheese allows,
 and crafts its way up to rarer beetles in BeetleCraft.
 
-Drives a headless Google Chrome (through Playwright) that is signed in to
-remilia.net in its own profile, separate from your everyday Chrome. launchd keeps it
-running; it times each poke itself, keeping the page open while the next poke is near,
-and views whoever the feed has shown in between, with the same requests the website
-makes. Having the page open regularly also keeps the website's sign-in fresh. Runs
-next to an always-on --watch-feed listener (see install_browser.sh).
+Drives Playwright's own headless Chromium (never your Google Chrome), signed in to
+remilia.net in its own profile. launchd keeps it running; every 20-30 minutes it opens
+the browser for a few minutes: whatever's due, a batch of pokes a few seconds apart,
+and views of whoever the feed has shown, with the same requests the website makes.
+In between, the browser is closed. Opening the page regularly also keeps the website's
+sign-in fresh. Runs next to an always-on --watch-feed listener (see install_browser.sh).
 
     python3 poke_browser.py --sign-in     sign in (the dashboard's sign-in page runs this: see browser.sign_in_from_dashboard)
     python3 poke_browser.py --dry-run     show who is due a poke or a view, without doing either

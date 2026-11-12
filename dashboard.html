@@ -1049,7 +1049,7 @@ function botTip() {  // what the bot is doing and what's next, for the green dot
   if (!data.jobs.bot) return "The bot isn't running";
   if (!b) return "The bot is running. It will say what it's doing after its next check.";
   const quiet = now() - b.at > 240 && b.chrome, out = [`${quiet ? "No word from the bot for " + span(now() - b.at) + ", last: " : ""}${b.doing}`];
-  out.push(b.chrome ? "Chrome is open" : "Chrome is closed (it opens when something's due)");
+  out.push(b.chrome ? "Chrome is open" : "Chrome is closed (it opens for a few minutes when something's due)");
   const coming = (b.next || []).filter(n => n.at > 0).slice(0, 4);
   if (coming.length) out.push("", ...coming.map(n => `${n.what}: ${n.at <= now() ? "due now" : "in " + span(n.at - now())}`));
   out.push("", b.errors >= 3 ? `RemiliaNET isn't answering well (${b.errors} failed tries in a row)` : b.ok_at ? `RemiliaNET answered ${span(now() - b.ok_at)} ago` : "");
@@ -3109,10 +3109,17 @@ function listen() {
 }
 if ("EventSource" in window) listen();
 setInterval(() => { if (!live || Date.now() - lastRefresh > 30000) { lastRefresh = Date.now(); refresh(); } }, 5000);
-// While this page is open and visible, tell the bot, so it keeps your game up to date (what you do on RemiliaNET shows
-// here within seconds); a hidden tab goes quiet and the bot goes back to its usual pace.
-const looking = () => { if (document.visibilityState === "visible") fetch("/api/looking", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}).catch(() => {}); };
-looking(); setInterval(looking, 8000); document.addEventListener("visibilitychange", looking);
+// While you're using this page (it's visible, and you've touched it in the last 5 minutes), tell the bot, so it keeps
+// Chrome open and your game up to date (what you do on RemiliaNET shows here within seconds). A hidden tab, or one left
+// open and untouched, goes quiet, and the bot goes back to short rounds with Chrome closed in between.
+const IDLE_AFTER = 5 * 60 * 1000;
+let touched = Date.now();
+for (const kind of ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"]) addEventListener(kind, () => { touched = Date.now(); }, {passive: true});
+const looking = () => {
+  if (document.visibilityState === "visible" && Date.now() - touched < IDLE_AFTER) fetch("/api/looking", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}).catch(() => {});
+};
+looking(); setInterval(looking, 8000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") touched = Date.now(); looking(); });
 loadTrophies(); setInterval(loadTrophies, 30000);  // your trophy case, as it is on RemiliaNET
 loadMe(); setInterval(loadMe, 60000);  // your card's picture and name, as they are on RemiliaNET
 </script>

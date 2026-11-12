@@ -2,7 +2,7 @@
 #
 #   irm https://raw.githubusercontent.com/tremorbae/Remidex/main/get.ps1 | iex
 #
-# It offers to install what RemiDex needs (Python, Google Chrome) if they're missing, downloads the latest RemiDex into
+# It offers to install what RemiDex needs (Python) if it's missing, downloads the latest RemiDex into
 # %USERPROFILE%\RemiDex (replacing an older copy there) and runs its installer, which asks before installing anything.
 # Run it again to update, or to sign in again: your sign-in and switches stay.
 
@@ -41,11 +41,6 @@ function Get-RemiDex {
         if (-not (Offer "Python" "Python.Python.3.12" "python.org (tick 'Add python.exe to PATH')")) { return }
         $python = Find-Python
         if (-not $python) { Write-Host "Python is installed: close this window, open PowerShell again and paste the RemiDex line again."; return }
-    }
-    $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-                "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ }
-    if (-not $chrome) {
-        if (-not (Offer "Google Chrome" "Google.Chrome" "google.com/chrome")) { return }
     }
     if ((Test-Path $Dest) -and -not (Test-Path (Join-Path $Dest "install_windows.py"))) {
         Write-Host "There's already a folder at $Dest that isn't RemiDex. Rename or move it, then paste the RemiDex line again."

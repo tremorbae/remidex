@@ -21,10 +21,6 @@ if ! xcode-select -p >/dev/null 2>&1; then
   xcode-select --install 2>/dev/null || true
   exit 1
 fi
-if [[ ! -d "/Applications/Google Chrome.app" ]]; then
-  echo "RemiDex needs Google Chrome. Install it from google.com/chrome, then paste the RemiDex line again."
-  exit 1
-fi
 if [[ -e "$DEST" && ! -f "$DEST/install_browser.sh" ]]; then
   echo "There's already a folder at $DEST that isn't RemiDex. Rename or move it, then paste the RemiDex line again."
   exit 1
