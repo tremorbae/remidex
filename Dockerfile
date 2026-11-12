@@ -1,16 +1,19 @@
 # RemiDex on a server. For now it runs the server check (hosted/check.py), which finds out whether RemiliaNET works from
 # here before the RemiDex website is built on it.
-FROM mcr.microsoft.com/playwright/python:v1.60.0-noble
+FROM python:3.12-slim-bookworm
 
-# The bot's browser: Playwright's headless Chromium, as on a Mac (lighter than Google Chrome). The image already has
-# Playwright 1.60.0 and its browsers, so this only makes sure.
-RUN python3 -m playwright install --only-shell chromium
+# Playwright, and the bot's browser with what it needs to run: Playwright's headless Chromium, as on a Mac (lighter than
+# Google Chrome, and only that one browser).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright PYTHONUNBUFFERED=1 REMIDEX_HOME=/tmp/remidex-check
+RUN pip install --no-cache-dir playwright==1.60.0 \
+ && playwright install --with-deps --only-shell chromium \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home remidex
 
-ENV PYTHONUNBUFFERED=1 REMIDEX_HOME=/tmp/remidex-check
 WORKDIR /app
 COPY remidex/ remidex/
 COPY hosted/ hosted/
 COPY catalog.json recipes.json quests.py ./
 
-USER pwuser
+USER remidex
 CMD ["python3", "hosted/check.py"]
