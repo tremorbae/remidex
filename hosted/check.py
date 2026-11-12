@@ -241,6 +241,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/code":
             code = re.sub(r"[\s-]", "", str(asked.get("code") or ""))
             if not re.fullmatch(r"\d{4,10}", code):
+                say("Two-factor code: one came in, but it isn't digits")
                 self.answer(400, b"Type the code's digits", "text/plain")
                 return
             with _lock:
@@ -248,6 +249,7 @@ class Handler(BaseHTTPRequestHandler):
                 if waiting:
                     _job["stage"] = "running"
                     _codes.put(code)
+            say("Two-factor code: came in, sending it to RemiliaNET" if waiting else "Two-factor code: came in, but nothing was waiting for one")
             self.answer(200 if waiting else 409, b'{"ok": true}' if waiting else b"Not waiting for a code", "application/json" if waiting else "text/plain")
         else:
             self.answer(404, b"Not found", "text/plain")
@@ -274,6 +276,9 @@ PAGE = """<!doctype html>
   li { padding: 10px 12px; border-radius: 6px; background: #262626; border-left: 4px solid #777; font-size: 12px; overflow-wrap: anywhere; }
   li.ok { border-color: #3aa84d; } li.bad { border-color: #d6372b; } li b { display: block; font-size: 13px; margin-bottom: 3px; color: #eee; }
   [hidden] { display: none !important; }
+  #codeForm { border: 2px solid #e0b030; background: #3a3424; border-radius: 8px; padding: 14px; }
+  #codeForm strong { display: block; margin-bottom: 10px; color: #ffd866; font-size: 15px; }
+  #codeForm input { height: 52px; font-size: 24px; letter-spacing: 6px; text-align: center; }
 </style></head><body><main>
   <h1>RemiDex server check</h1>
   <p>Finds out whether RemiliaNET works from this server: it loads RemiliaNET, signs in with your account, then opens that
@@ -284,7 +289,8 @@ PAGE = """<!doctype html>
     <div class="row"><button id="go" type="submit">Run the check</button><button id="only" class="plain" type="button">Only check RemiliaNET loads</button></div>
   </form>
   <form id="codeForm" hidden>
-    <label>Two-factor code (from your authenticator app)<input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12"></label>
+    <strong>RemiliaNET wants your two-factor code. Type it here (you have 5 minutes):</strong>
+    <label>Code from your authenticator app<input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12"></label>
     <button id="verify" type="submit">Send the code</button>
   </form>
   <ol id="steps"></ol>
@@ -299,8 +305,11 @@ async function post(path, body) {
 function show(s) {
   running = s.stage === "running" || s.stage === "code";
   $("go").disabled = $("only").disabled = running;
-  $("codeForm").hidden = s.stage !== "code";
-  $("form").hidden = s.stage === "code";
+  const asking = s.stage === "code", wasAsking = !$("codeForm").hidden;
+  $("codeForm").hidden = !asking;
+  $("form").hidden = asking;
+  document.title = asking ? "⚠ Type your code: RemiDex server check" : "RemiDex server check";
+  if (asking && !wasAsking) { $("code").focus(); $("codeForm").scrollIntoView({block: "center"}); }
   $("steps").replaceChildren(...s.steps.map(x => {
     const li = document.createElement("li"), b = document.createElement("b");
     li.className = x.ok === true ? "ok" : x.ok === false ? "bad" : "";
@@ -324,7 +333,7 @@ $("form").onsubmit = e => { e.preventDefault(); start(true); };
 $("only").onclick = () => start(false);
 $("codeForm").onsubmit = async e => {
   e.preventDefault();
-  try { await post("/code", {code: $("code").value}); $("code").value = ""; } catch (err) { alert(err.message); }
+  try { await post("/code", {code: $("code").value}); $("code").value = ""; } catch (err) { alert("The code didn't go through: " + err.message); }
   check();
 };
 check();
