@@ -84,6 +84,10 @@ ok(len(seen) == 2 and seen[1] == {"ladybug": 2}, f"two passes, reserving what yo
 none = pb.Planner(bronze, book, catalog, True)
 ok(pb.two_pass(lambda reserve: none) is none, "one pass when nothing was")
 # ---- quests plan the same way: a held Gazania the Sunset Moth needs isn't rerolled as "any Adamantine flower"
+# (With the book's shortcut, any two Adamantine beetles into a Diamond one, taken out as the game does when it says a
+# recipe doesn't exist: the Mars Rhino is then made by its own recipe, which needs the Sunset Moth.)
+pb.remove_recipe("@beetle_6 from @beetle_5 + @beetle_5")
+book, catalog = pb.recipe_book()
 inv = {"gazania": 1, "junk_cube_t2": 1, "junk_cube_t1": 4, "green": 30, "hammer_t1": 1, "goliath": 1, "bombardier": 1, "cattail": 1}
 held = pb.Bag({"inventory": inv, "crafting_slot3_unlocked": True, "hammers": [{"hammer": "hammer_t1", "break_rate": 0, "base_break_rate": 0}]},
               {k: cards[k] for k in inv})  # (the game has cards only for what you've found)

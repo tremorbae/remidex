@@ -1,11 +1,7 @@
 .git
 .gitignore
-.gitattributes
 tests
 **/__pycache__
 *.md
 get.sh
-get.ps1
 install_browser.sh
-install_windows.bat
-install_windows.py

@@ -1,14 +1,10 @@
 """A change is never sent to RemiliaNET twice, the bot and the dashboard can't undo each other's changes, and every answer
 to a craft goes through the whole crafting code without a crash (fake page and site, temp files, no network)."""
-import http.server
 import json
 import subprocess
 import sys
 import tempfile
-import threading
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 import support
 pb = support.load()
@@ -58,27 +54,15 @@ def slow_request(request):  # the bot moves the queue on while the dashboard is 
 
 
 dashboard.profile_request = slow_request
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
-threading.Thread(target=server.serve_forever, daemon=True).start()
-post = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}/api/profile", data=json.dumps({"bio": "hi"}).encode(),
-                              headers={"Host": f"127.0.0.1:{dashboard.PORT}", "Content-Type": "application/json"})
-with urllib.request.urlopen(post, timeout=10) as r:
-    ok(r.status == 200 and "settings" in json.loads(r.read()), "the save is answered with the settings, as before")
+ask = support.serve(dashboard)
+status, _, answer = ask("/api/profile", {"bio": "hi"})
+ok(status == 200 and "settings" in json.loads(answer), "the save is answered with the settings, as before")
 ok(pb.read_json(pb.PROFILE_EDIT_FILE).get("bio") == "hi", "the edit is saved for the bot")
 ok(pb.read_json(pb.OVERRIDES_FILE) == {"make_queue": []}, "and what the bot changed meanwhile stays")
 dashboard.profile_request = original
 
 # ---- the dashboard answers to its names (remidex.localhost too), and to nothing else, so other sites can't reach it
-def asked(host, path="/api/stream", origin=None, body=None):
-    request = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}", data=body,
-                                     headers={"Host": host, **({"Origin": origin} if origin else {}), **({"Content-Type": "application/json"} if body else {})})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as r:
-            return r.status
-    except urllib.error.HTTPError as e:
-        return e.code
-
-
+asked = lambda host, path, origin=None, body=None: ask(path, body, host=host, origin=origin)[0]  # noqa: E731
 port = dashboard.PORT
 ok(asked(f"remidex.localhost:{port}", "/favicon.ico") in (200, 404) and asked(f"localhost:{port}", "/favicon.ico") in (200, 404), "remidex.localhost and localhost both reach it")
 ok(asked(f"evil.example:{port}", "/favicon.ico") == 403 and asked(f"remidex.localhost.evil.example:{port}", "/favicon.ico") == 403, "any other name is refused")
@@ -102,15 +86,11 @@ with pb.editing(path):
 pb.write_json(pb.OVERRIDES_FILE, {"make_queue": [{"keys": ["a"]}]})
 bot_side.stdout.readline()  # it has read the file and is about to change it
 started = time.time()
-post = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}/api/lock", data=json.dumps({"key": "pond", "locked": True}).encode(),
-                              headers={"Host": f"127.0.0.1:{dashboard.PORT}", "Content-Type": "application/json"})
-with urllib.request.urlopen(post, timeout=10) as r:
-    ok(r.status == 200, "the switch is saved")
+ok(ask("/api/lock", {"key": "pond", "locked": True})[0] == 200, "the switch is saved")
 bot_side.wait(timeout=10)
 saved = pb.read_json(pb.OVERRIDES_FILE)
 ok(saved.get("locked") == ["pond"] and saved.get("make_queue") == [] and time.time() - started > 0.5,
    f"the dashboard waits for the bot's change and keeps it, and the bot's write keeps yours ({saved})")
-server.shutdown()
 
 
 # ---- you ask for another profile change while the bot is saving the last one: the newer one isn't marked done

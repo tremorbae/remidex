@@ -1,12 +1,8 @@
 """The trophy case on the dashboard: read from your public profile, its pictures fetched only from the site's public trophy
 paths, and never anything that isn't yours (made-up profile, no network)."""
-import http.server
 import json
 import tempfile
-import threading
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 import support
 pb = support.load()
@@ -78,18 +74,12 @@ ok(request({"achievementsDisplayed": [], "evil": 1}) is not None and "evil" not 
 ok(request({}) is None and request({"shelves": mine, "bio": "x" * 500}) is None, "an empty request, or one with a part that's wrong, is refused")
 
 # ---- over HTTP, the way the page asks
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
-threading.Thread(target=server.serve_forever, daemon=True).start()
-base = f"http://127.0.0.1:{server.server_address[1]}"
+ask = support.serve(dashboard)
 
 
 def get(path):
-    request = urllib.request.Request(base + path, headers={"Host": f"127.0.0.1:{dashboard.PORT}"})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as r:
-            return r.status, r.headers.get("Content-Type"), r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, e.headers.get("Content-Type"), b""
+    status, headers, body = ask(path)
+    return status, headers.get("Content-Type"), body
 
 
 status, kind, body = get("/api/trophies")
@@ -98,5 +88,4 @@ ok(get("/trophy/202")[:2] == (200, "image/webp") and get("/trophy-shelf/graphite
 ok(get("/trophy/1")[0] == 404 and get("/trophy/166")[0] == 404 and get("/trophy-shelf/marble")[0] == 404 and get("/trophy/abc")[0] == 404, "but not for anything else")
 dashboard._live["me"] = (time.time(), None)
 ok(json.loads(get("/api/trophies")[2]) is None, "offline: it says there's nothing, so the page hides the section")
-server.shutdown()
 ok.done()

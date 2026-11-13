@@ -1,7 +1,7 @@
 """The app keeping itself in good shape: the bot's own profile views don't crowd the feed or the log, hiccups it gets over
-are calm notes, the log is trimmed without counting anything twice, sure crafts go before long shots, the bot's browser
-is its own (not your Google Chrome) and draws calmly, and the Mac is never kept awake (temp files, fakes; nothing real
-is run)."""
+are calm notes, the log is trimmed without counting anything twice, sure crafts go before long shots, the bot's
+browser is its own (not your Google Chrome) and draws calmly, and RemiDex's logo is made from RemiliaNET's whatever
+size the site draws it at (temp files, fakes; nothing real is run)."""
 import tempfile
 import time
 from pathlib import Path
@@ -79,7 +79,6 @@ ok(pb.next_craft(lotus, True, settings, {})[0] != moss, "so the Green Beetles go
 
 # ---- the bot's browser: Playwright's own headless Chromium (not your Google Chrome), drawing calmly
 from remidex import browser  # noqa: E402
-import os  # noqa: E402
 launched, scripts = [], []
 
 
@@ -103,21 +102,34 @@ class Context:
 
 fake = type("Playwright", (), {"chromium": type("Chromium", (), {"launch_persistent_context": staticmethod(lambda folder, **k: (launched.append((folder, k)), Context())[1])})()})()
 support.patch(PROFILE_DIR=tmp / "profile", COOKIES_FILE=tmp / "cookies.json")
-os.environ.pop("REMIDEX_CHROME", None)
 browser.Site(fake)
 folder, how = launched[-1]
-ok(how.get("channel") is None and how.get("headless") is True, f"Playwright's own headless Chromium, not your Google Chrome ({how.get('channel')})")
+ok("channel" not in how and how.get("headless") is True, f"Playwright's own headless Chromium, not your Google Chrome ({sorted(how)})")
 ok(folder == tmp / "profile" and 'PROFILE_DIR = APP_DIR / "browser-profile"' in Path(browser.__file__).read_text(), "in its own profile folder, not the one your Google Chrome made")
 ok(scripts == [browser.CALM] and "requestAnimationFrame" in browser.CALM, "the page draws once a second, not 60 times")
 browser.Site(fake, calm=False)
 ok(scripts == [browser.CALM], "signing in leaves RemiliaNET's pages as they are")
-os.environ["REMIDEX_CHROME"] = "chrome"
-browser.Site(fake)
-ok(launched[-1][1].get("channel") == "chrome", "REMIDEX_CHROME=chrome still picks an installed Chrome (a server, say)")
-os.environ.pop("REMIDEX_CHROME")
 mac = (support.ROOT / "install_browser.sh").read_text()
 ok("Google Chrome.app" not in mac and "playwright install --only-shell chromium" in mac, "the Mac installer gets that Chromium, and doesn't need Google Chrome")
 ok(mac.index('"$LAUNCHCTL" enable') < mac.index('"$LAUNCHCTL" bootstrap'), "the installer switches its jobs back on before starting them")
 ok(all(f'"RemiDex {n}"' in mac for n in ("bot", "feed watcher", "dashboard")), "each job has a clear name in Login Items, not \"python\"")
-ok(not hasattr(loop, "stay_awake"), "the Mac is never kept awake")
+
+# ---- RemiDex's logo: the flower from RemiliaNET's own logo, whatever size the site draws that at (made-up logos)
+import xml.dom.minidom  # noqa: E402
+small = (b'<svg width="150" height="40" viewBox="0 0 150 40" xmlns="http://www.w3.org/2000/svg"><path d="M10 5L30 5L20 35Z" fill="#1C2788"/>'
+         b'<path d="M41 20L38 22Z" fill="#FFF"/><path d="M50 5L60 35Z" fill="#111111"/><path d="M130 5L140 35Z" fill="#999999"/></svg>')
+large = (b'<?xml version="1.0"?><svg viewBox="0 0 2624.56 550.18" xmlns="http://www.w3.org/2000/svg"><defs><style>\n .a, .b {\n fill: #2c3382;\n }\n .c { fill: #bebebe; }\n'
+         b' .d { stroke: #b0b0b0; fill: #fff; }</style></defs><path class="a" d="M747.43,65.82c26.97,0,48.87,10.48Z"/><path class="c" d="M2543.25,444.49c1,1,2,2Z"/>'
+         b'<path class="b" d="M264.78,443.55c26.69-8.72Z"/><path class="d" d="M554.03,206.94l3,3Z"/></svg>')
+for what, site_logo, box, blue, silver in (("drawn small, colours on its shapes", small, b'viewBox="0 0 42 40"', b"#111111", b"#999999"),
+                                           ("drawn large, colours in a style sheet", large, b'viewBox="0 0 577.689 550.18"', b"#2c3382", b"#bebebe")):
+    dashboard._logo.clear()
+    dashboard.public_asset = lambda name, data=site_logo: data
+    logo, icon = dashboard.remidex_logo(), dashboard.remidex_icon()
+    xml.dom.minidom.parseString(logo), xml.dom.minidom.parseString(icon)  # (well-formed, or this raises)
+    ok(logo.count(b"<path") == 2 and icon.count(b"<path") == 2 and box in logo and b"M747" not in logo and b"M50 " not in logo, f"the site's logo {what}: its flower is kept, its letters aren't")
+    ok(b'fill="' + blue + b'">REMI' in logo and b'fill="' + silver + b'">DEX' in logo and (b"<style>" in logo) == (b"<style>" in site_logo), "and REMIDEX is written in that logo's own colours")
+dashboard._logo.clear()
+dashboard.public_asset = lambda name: None
+ok(dashboard.remidex_logo() is None and dashboard.remidex_icon() is None, "no logo to be had (offline): none of ours either, not a broken one")
 ok.done()

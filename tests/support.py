@@ -1,28 +1,62 @@
-"""Helpers for the offline tests: the bot is loaded without a browser, and names (a file's path, a function to stub, the
-clock) are replaced everywhere they're used, whichever part of the bot uses them."""
+"""Helpers for the offline tests: the bot is loaded without a browser, in an empty folder of its own, and names (a file's
+path, a function to stub, the clock) are replaced everywhere they're used, whichever part of the bot uses them."""
+import http.client
+import http.server
+import json
+import os
 import sys
+import tempfile
+import threading
 import types
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def load():
-    """The bot (poke_browser), with Playwright stubbed out. Nothing here touches the network or your data."""
+    """The bot (poke_browser), with Playwright stubbed out. It keeps everything in a new, empty folder (REMIDEX_HOME), so
+    a test never reads or changes what RemiDex has saved on this computer, and gives the same result on any computer.
+    Nothing but a test's own server on this computer can be reached: a test is never online."""
+    os.environ["REMIDEX_HOME"] = tempfile.mkdtemp()  # (before the bot is loaded: it's where it keeps things)
     sys.modules.setdefault("playwright", types.ModuleType("playwright"))
     sync = types.ModuleType("playwright.sync_api")
     sync.Error, sync.sync_playwright = Exception, None
     sys.modules["playwright.sync_api"] = sync
+    online = urllib.request.urlopen
+
+    def offline(request, *args, **kwargs):
+        url = request if isinstance(request, str) else request.full_url
+        if urllib.parse.urlsplit(url).hostname not in ("127.0.0.1", "localhost"):
+            raise OSError(f"the tests are offline ({url})")
+        return online(request, *args, **kwargs)
+    urllib.request.urlopen = offline
     sys.path.insert(0, str(ROOT))
     import poke_browser
-    import store
-    import tempfile
-    away = Path(tempfile.mkdtemp())
-    store.DB_FILE = away / "test.db"  # never your real history
-    # nor your chat, what you wrote in it, or whether your dashboard is open (a test can still point them elsewhere)
-    patch(CHAT_FILE=away / "chat.json", CHAT_OUT_FILE=away / "chat_out.json", CHAT_FILES=away / "chat_files",
-          REMILIA_FEED_FILE=away / "remilia_activity.json", LOOKING_FILE=away / "looking.json", CRAFT_NOW_FILE=away / "craft_now.json")
     return poke_browser
+
+
+def serve(dashboard):
+    """The dashboard's server on a free port of this computer, for one test (it stops with the test). Returns
+    ask(path, body=None, kind="application/json", host=None, origin=None): one request to it, the way the page makes
+    them (a GET, or with a body a POST: bytes as they are, anything else as JSON; addressed to the dashboard's own name
+    unless host says another; origin: the site the request says it comes from). Answers (status, headers, body). A
+    redirect is an answer like any other: it isn't followed."""
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def ask(path, body=None, kind="application/json", host=None, origin=None):
+        data = body if body is None or isinstance(body, bytes) else json.dumps(body).encode()
+        headers = {"Host": host or f"127.0.0.1:{dashboard.PORT}", **({"Content-Type": kind} if data is not None else {}), **({"Origin": origin} if origin else {})}
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+        try:
+            connection.request("GET" if data is None else "POST", path, body=data, headers=headers)
+            answer = connection.getresponse()
+            return answer.status, answer.headers, answer.read()
+        finally:
+            connection.close()
+    return ask
 
 
 def cards(catalog):

@@ -1,7 +1,7 @@
 """Paths, timings and constants, plus the small helpers every other part uses: log, notify, read_json, write_json."""
 
 import contextlib
-import html
+import fcntl
 import json
 import os
 import subprocess
@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from remidex.places import APP_DIR, LOG_FILE, VENV_PYTHON, WINDOWS  # noqa: F401 (other parts import these from here)
+from remidex.places import APP_DIR, LOG_FILE, VENV_PYTHON  # noqa: F401 (other parts import these from here)
 
 
 SITE = "https://www.remilia.net"
@@ -33,8 +33,6 @@ try:
 except ImportError:
     # Playwright lives in the installer's Python environment; hop into it so `python3 poke_browser.py` just works.
     if VENV_PYTHON.exists() and Path(sys.executable) != VENV_PYTHON:
-        if WINDOWS:  # (Windows has no exec: run it there, and finish when it does)
-            sys.exit(subprocess.call([str(VENV_PYTHON), *sys.argv]))
         os.execv(VENV_PYTHON, [str(VENV_PYTHON), *sys.argv])
     sys.exit("Playwright isn't installed yet. Run the installer first.")
 
@@ -69,20 +67,10 @@ def log(message):
 
 
 def notify(message, subtitle=""):
-    """A notification from RemiDex: a Mac one, or on Windows a toast (shown as coming from Windows PowerShell)."""
+    """A Mac notification from RemiDex. (Only on a Mac: on a server there's nobody to show one to.)"""
     if sys.platform == "darwin":
         script = f"display notification {json.dumps(message, ensure_ascii=False)} with title \"RemiDex\"" + (f" subtitle {json.dumps(subtitle, ensure_ascii=False)}" if subtitle else "")
         subprocess.run(["osascript", "-e", script], capture_output=True)
-    elif WINDOWS:
-        lines = "".join(f"<text>{html.escape(t)}</text>" for t in ("RemiDex", subtitle, message) if t)
-        toast = f"<toast><visual><binding template='ToastGeneric'>{lines}</binding></visual></toast>".replace("'", "''")
-        script = ("[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; "
-                  "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null; "
-                  f"$x = New-Object Windows.Data.Xml.Dom.XmlDocument; $x.LoadXml('{toast}'); "
-                  "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
-                  "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($x))")
-        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
-                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def http_error(status, body):
@@ -110,14 +98,7 @@ def write_json(path, data):
     tmp = path.with_name(f"{path.stem}.{os.getpid()}-{threading.get_ident()}.tmp")
     with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
         json.dump(data, f, indent=1, sort_keys=True)
-    for attempt in range(20):
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:  # (Windows: someone's reading it this moment; it's free again in a blink)
-            if not WINDOWS or attempt == 19:
-                raise
-            time.sleep(.05)
+    os.replace(tmp, path)
 
 
 @contextlib.contextmanager
@@ -126,24 +107,8 @@ def editing(path):
     profile_edit.json), changes it and writes it back: so neither undoes what the other saved a moment before."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path.with_name(f"{path.name}.lock"), "a+b") as lock:
-        if WINDOWS:
-            import msvcrt
-            lock.seek(0)
-            while True:
-                try:
-                    msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)  # (waits up to 10 seconds a try)
-                    break
-                except OSError:
-                    continue
-            try:
-                yield
-            finally:
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(lock, fcntl.LOCK_EX)  # (let go when the file closes)
-            yield
+        fcntl.flock(lock, fcntl.LOCK_EX)  # (let go when the file closes)
+        yield
 
 
 LOOKING_FILE = APP_DIR / "dashboard_open.json"  # the dashboard writes this while it's open and visible: someone's looking at it

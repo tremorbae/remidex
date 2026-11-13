@@ -1,12 +1,8 @@
 """Writing in RemiliaNET's global chat from the dashboard: what the page may attach and send, and the bot sending it once,
 the way the site's chat box does (temp files, a fake page and site: nothing is sent anywhere)."""
-import http.server
 import json
 import tempfile
-import threading
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 import support
 pb = support.load()
@@ -16,28 +12,13 @@ import dashboard  # noqa: E402
 tmp = Path(tempfile.mkdtemp())
 support.patch(CHAT_OUT_FILE=tmp / "chat_out.json", CHAT_FILES=tmp / "chat_files", CHAT_FILE=tmp / "chat.json", LOOKING_FILE=tmp / "looking.json",
               DASH_DIR=tmp, log=lambda m: None)
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
-threading.Thread(target=server.serve_forever, daemon=True).start()
-
-
-def post_get(path):
-    request = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}", headers={"Host": f"127.0.0.1:{dashboard.PORT}"})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as r:
-            return r.status
-    except urllib.error.HTTPError as e:
-        return e.code
+ask = support.serve(dashboard)
+get = lambda path: ask(path)[0]  # noqa: E731
 
 
 def post(path, body, kind="application/json"):
-    data = body if isinstance(body, bytes) else json.dumps(body).encode()
-    request = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}", data=data,
-                                     headers={"Host": f"127.0.0.1:{dashboard.PORT}", "Content-Type": kind})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as r:
-            return r.status, json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        return e.code, None
+    status, _, answer = ask(path, body, kind)
+    return status, json.loads(answer) if status == 200 else None
 
 
 # ---- attaching: RemiliaNET's own kinds and sizes
@@ -143,7 +124,7 @@ ok([{k: r[k] for k in ("emoji", "n", "mine")} for r in shown[0]["reactions"]] ==
 ok([p["name"] for p in shown[0]["reactions"][1]["who"]] == ["Unknown", "Unknown"] and shown[0]["reactions"][1]["who"][0]["mine"],
    "who reacted, for the card (someone the chat doesn't name is Unknown, as on the site)")
 ok(shown[1]["video"] is None, "a video from anywhere but RemiliaNET isn't shown")
-ok(post_get(f"/rmedia/{uuid}/../../etc") == 404 and post_get("/rmedia/not-a-video") == 404, "the video pass-through only takes RemiliaNET's own videos")
+ok(get(f"/rmedia/{uuid}/../../etc") == 404 and get("/rmedia/not-a-video") == 404, "the video pass-through only takes RemiliaNET's own videos")
 
 # ---- reacting: added, or taken back when it's already yours, as on the site
 ok(post("/api/chat/react", {"message_id": 5, "emoji": "🍕"})[0] == 400, "an emoji the chat doesn't offer: refused")
@@ -190,6 +171,5 @@ ok(len(asked) == 1 and "q=bel" in asked[0] and "limit=6" in asked[0], f"asked on
 dashboard.urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(OSError("offline"))
 ok(dashboard.mention_search("zzz") == [], "RemiliaNET can't be reached: nobody listed, no error")
 dashboard.urllib.request.urlopen = real_open
-ok(post_get("/api/mention?q=a%20b") == 404 and post_get("/api/mention?q=" + "x" * 25) == 404, "only what a handle can be is looked up")
-server.shutdown()
+ok(get("/api/mention?q=a%20b") == 404 and get("/api/mention?q=" + "x" * 25) == 404, "only what a handle can be is looked up")
 ok.done()

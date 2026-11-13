@@ -12,7 +12,7 @@ ZIP_URL="${REMIDEX_ZIP_URL:-https://github.com/$REPO/archive/refs/heads/main.zip
 DEST="${REMIDEX_DIR:-$HOME/RemiDex}"
 
 if [[ "$(uname)" != "Darwin" ]]; then
-  echo "This is for a Mac. On Windows, use the PowerShell line in the README."
+  echo "RemiDex runs on a Mac."
   exit 1
 fi
 if ! xcode-select -p >/dev/null 2>&1; then

@@ -1,11 +1,7 @@
 """Hammers switched off for smashing: the bot never smashes with them, but they stay in the bag to be upgraded or go into a
 recipe, and the dashboard only saves sensible choices (made-up bags, the real recipe book, temp files, a local test server)."""
-import http.server
 import json
 import tempfile
-import threading
-import urllib.error
-import urllib.request
 from pathlib import Path
 import support
 pb = support.load()
@@ -58,20 +54,8 @@ no_tin = pb.plan_make(pb.usable(bag({"daisy": 2, "green": 3, "hammer_t4": 1, "ju
 ok(any(s.get("out") == "hammer_t1" for s in no_tin.steps), "only an Adamantine Hammer, switched off: the plan forges a Tin Hammer to smash with")
 
 # ---- the dashboard's request
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
-threading.Thread(target=server.serve_forever, daemon=True).start()
-
-
-def save(body, path="/api/hammers"):
-    request = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}", data=json.dumps(body).encode(), method="POST",
-                                     headers={"Host": f"127.0.0.1:{dashboard.PORT}", "Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as r:
-            return r.status
-    except urllib.error.HTTPError as e:
-        return e.code
-
-
+ask = support.serve(dashboard)
+save = lambda body, path="/api/hammers": ask(path, body)[0]  # noqa: E731
 base = {"order": pb.HAMMERS, "limits": {h: 25 for h in pb.HAMMERS}, "timing": True}
 (tmp / "overrides.json").write_text("{}")
 ok(save({**base, "off": ["hammer_t3", "hammer_t4", "hammer_t4"]}) == 200 and pb.read_json(pb.OVERRIDES_FILE)["hammers"]["off"] == ["hammer_t3", "hammer_t4"], "switched off and saved")
@@ -85,7 +69,6 @@ ok(save({"beetle": "auto"}, "/api/sacrifice") == 200 and "sacrifice" not in pb.r
 ok(save({"beetle": "red"}, "/api/sacrifice") == 400 and save({}, "/api/sacrifice") == 400, "only Green, Auto or Purple")
 ok(save({"action": "tin_hammer", "auto": False}, "/api/switch") == 200 and pb.load_settings()["tin_hammer"] is False, "Auto Tin Hammer: switched off and saved")
 ok(save({"action": "tin_hammer", "auto": True}, "/api/switch") == 200 and pb.load_settings()["tin_hammer"] is True, "and back on")
-server.shutdown()
 
 # ---- Auto Tin Hammer: one from two Junk Cubes while you have none, whatever else is going on; off, the bot never makes one
 idle = {**settings("moss"), "make": None}

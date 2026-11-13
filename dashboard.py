@@ -29,11 +29,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import poke_browser as bot
-from remidex import browser
-from remidex.places import WINDOWS
 import quests
 import store
-from remidex import says
+from remidex import browser, says
 
 HOST, PORT = "127.0.0.1", 8642
 NAMES = {f"remidex.localhost:{PORT}", f"localhost:{PORT}", f"127.0.0.1:{PORT}"}  # what the dashboard answers to (a .localhost name is always this computer)
@@ -416,13 +414,32 @@ def public_asset(name):
 _logo = {}
 
 
+def logo_fill(shape, sheet):
+    """The colour one of the logo's shapes is filled with: its own, or its class's in the logo's style sheet. None if
+    neither says."""
+    if own := re.search(r'\bfill="(#[0-9a-fA-F]{3,8})"', shape):
+        return own[1]
+    names = {f".{c}" for c in (re.search(r'\bclass="([^"]*)"', shape) or ["", ""])[1].split()}
+    return next((fill[1] for selectors, rules in re.findall(r"([^{}]+)\{([^}]*)\}", sheet)
+                 if names & {s.strip() for s in selectors.split(",")} and (fill := re.search(r"(?<![-\w])fill:\s*(#[0-9a-fA-F]{3,8})", rules))), None)
+
+
 def logo_flower():
-    """RemiliaNET's flower, as it is in the site's own logo: the shapes in its first 42 units (the letters run on to the
-    right). Empty if the logo can't be had."""
+    """RemiliaNET's flower, as it is in the site's own logo, 42 wide and 40 high: the shapes that start at its left, where
+    the flower is (it's about as wide as the logo is high; the letters run on to the right), in the logo's own colours
+    (its style sheet, if it has one). Whatever size the site draws its logo at. Empty if the logo can't be had. Notes the
+    colours of the logo's first and last letters too, for ours (see remidex_logo)."""
     if "flower" not in _logo:
         original = (public_asset("logo.svg") or b"").decode("utf-8", "replace")
-        _logo["flower"] = "".join(p for p in re.findall(r"<path[^>]*>", original)
-                                  if max(map(float, re.findall(r"-?\d+\.?\d*", re.search(r'd="([^"]*)"', p)[1])), default=99) <= 42)
+        box = re.search(r'viewBox="[-\d.]+[ ,]+[-\d.]+[ ,]+[\d.]+[ ,]+([\d.]+)"', original)
+        height = float(box[1]) if box else 40.0
+        paths = re.findall(r"<path[^>]*/>", original)
+        shapes = [p for p in paths if (start := re.search(r'\bd="\s*[Mm]\s*(-?\d*\.?\d+)', p)) and float(start[1]) <= height * 1.05]
+        letters = [p for p in paths if p not in shapes]
+        style = re.search(r"<style[^>]*>(.*?)</style>", original, re.S)
+        _logo["blue"] = (letters and logo_fill(letters[0], style[1] if style else "")) or "#1C2788"
+        _logo["silver"] = (letters and logo_fill(letters[-1], style[1] if style else "")) or "#BEBEBE"
+        _logo["flower"] = f'<svg width="42" height="40" viewBox="0 0 {height * 1.05:g} {height:g}">{style[0] if style else ""}{"".join(shapes)}</svg>' if shapes else ""
     return _logo["flower"]
 
 
@@ -431,8 +448,8 @@ def remidex_logo():
     "REMILIANET". None if the site's logo can't be had."""
     word = 'font-family="\'Times New Roman\', Times, serif" font-size="41" lengthAdjust="spacingAndGlyphs"'
     return (f'<svg width="150" height="40" viewBox="0 0 150 40" fill="none" xmlns="http://www.w3.org/2000/svg">{logo_flower()}'
-            f'<text x="44" y="34" {word} textLength="58" fill="#1C2788">REMI</text>'
-            f'<text x="104" y="34" {word} textLength="44" fill="#BEBEBE">DEX</text></svg>').encode() if logo_flower() else None
+            f'<text x="44" y="34" {word} textLength="58" fill="{_logo["blue"]}">REMI</text>'
+            f'<text x="104" y="34" {word} textLength="44" fill="{_logo["silver"]}">DEX</text></svg>').encode() if logo_flower() else None
 
 
 def remidex_icon():
@@ -494,12 +511,8 @@ _jobs = {"at": 0.0, "running": {}}
 
 
 def running_jobs():
-    """Which background jobs have a live process (launchd's, or on Windows the keeper's): asked at most every 10 seconds."""
+    """Which background jobs have a live process (launchd's): asked at most every 10 seconds."""
     if time.time() - _jobs["at"] < 10:
-        return _jobs["running"]
-    if WINDOWS:
-        from remidex.keeper import running
-        _jobs.update(at=time.time(), running={name: running()[name] for name in JOBS})
         return _jobs["running"]
     try:
         out = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=5).stdout
@@ -1268,20 +1281,14 @@ class Handler(BaseHTTPRequestHandler):
         browser send requests to this Mac under another name (DNS rebinding) to read what's here; those are refused."""
         return self.headers.get("Host") in NAMES
 
-    def permitted(self):
-        """Whether to answer this request (see local_only); if not, says no itself."""
-        if not self.local_only():
-            self.send_error(403)
-            return False
-        return True
-
     def end_with_safe_headers(self):
         for name, value in SAFE_HEADERS:
             self.send_header(name, value)
         self.end_headers()
 
     def do_GET(self):
-        if not self.permitted():
+        if not self.local_only():
+            self.send_error(403)
             return
         body, kind, cache = None, None, "no-store"
         name, art = self.path.removeprefix("/public/"), ART.match(self.path)
@@ -1413,12 +1420,11 @@ class Handler(BaseHTTPRequestHandler):
             POST /api/sign-in/code {"code"}                               its two-factor code, when it asks; POST /api/sign-in/stop {}: start over
         Only the dashboard's own page may do this: other sites in your browser can't send the JSON header without
         permission, and requests addressed to any other host name are refused."""
-        allowed = NAMES
-        origin = self.headers.get("Origin")  # (the Host check is the same as local_only)
-        host_ok, origin_ok = self.headers.get("Host") in allowed, not origin or origin.split("//", 1)[-1] in allowed
+        origin = self.headers.get("Origin")
+        origin_ok = not origin or origin.split("//", 1)[-1] in NAMES
         attaching = self.path == "/api/chat/attach"  # (the file itself, sent as its own type: see chat_attach)
         if (self.path not in ("/api/switch", "/api/goal", "/api/make", "/api/hammers", "/api/pause", "/api/queue", "/api/profile", "/api/lock", "/api/sacrifice", "/api/step", "/api/looking",
-                              "/api/chat/attach", "/api/chat/send", "/api/chat/react", "/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop") or not host_ok
+                              "/api/chat/attach", "/api/chat/send", "/api/chat/react", "/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop") or not self.local_only()
                 or (self.headers.get("Content-Type") not in CHAT_TYPES if attaching else self.headers.get("Content-Type") != "application/json") or not origin_ok):
             self.send_error(403)
             return
@@ -1660,11 +1666,7 @@ class Handler(BaseHTTPRequestHandler):
     def answer_settings(self):
         """After a change: the settings as they are now."""
         _status_cache["at"] = 0  # the page asks for the status straight after: it must show this change, not a second-old copy
-        body = json.dumps({"settings": settings_view(bot.load_settings())}).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_with_safe_headers()
-        self.wfile.write(body)
+        self.answer_json({"settings": settings_view(bot.load_settings())})
 
     def log_message(self, *args):
         pass  # keep the log for the bot

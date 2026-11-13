@@ -324,13 +324,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="show who is due a poke or a view, without doing either")
     parser.add_argument("--scheduled", action="store_true", help="set by launchd: runs forever, poking on schedule")
     parser.add_argument("--watch-feed", action="store_true", help="record everyone in the activity feed; runs forever (launchd keeps it up)")
-    parser.add_argument("--keep-running", action="store_true", help="Windows: keep the bot, the feed watcher and the dashboard running (started at sign-in)")
     args = parser.parse_args()
 
-    if args.keep_running:
-        from remidex.keeper import keep_running
-        keep_running() or sys.exit("RemiDex is already running.")
-        return
     if args.watch_feed:
         watch_feed()
     if args.scheduled:

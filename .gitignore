@@ -6,20 +6,20 @@ __pycache__/
 # Screenshots: the dashboard shows your account and other people, so none belongs in the repo.
 *.png
 
-# Your sign-in and everything RemiDex saves live in ~/Library/Application Support/remilianet-poke-browser, never in
-# this folder. These are here in case a copy ever ends up in it anyway: they must never be committed.
-cookies.json
-state.json
-game.json
-feed.json
-everyone.json
-overrides.json
-craft_stats.json
-removed_recipes.json
-profile_edit.json
-chrome-profile/
-dashboard/
-venv/
-.env
+# Your sign-in and everything RemiDex saves live outside this folder (see remidex/places.py). These are here in case a
+# copy ever ends up in it anyway: none of it must ever be committed. (The only JSON here is the item list and the recipes.)
+/*.json
+!/catalog.json
+!/recipes.json
+*.db
+*.db-*
+*.lock
 *.log
 *.tmp
+.env
+/browser-profile/
+/chrome-profile/
+/chat_files/
+/dashboard/
+/logs/
+/venv/

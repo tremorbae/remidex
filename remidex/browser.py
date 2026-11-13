@@ -3,7 +3,6 @@ dashboard's sign-in page)."""
 
 import html
 import json
-import os
 import queue
 import re
 import sys
@@ -142,19 +141,23 @@ UPLOAD = """async field => {
 }"""
 
 
+def open_browser(playwright, profile, calm=True):
+    """The bot's browser, unseen, keeping its profile in the folder profile: Playwright's own headless Chromium, not your
+    Google Chrome, which is left alone (macOS took the bot's copy for yours, so yours wouldn't open a window). Unseen, a
+    page needs no animations ("reduced motion", and CALM unless calm is False) or pictures, and the site and its sign-in
+    work the same. (The bot's own downloads, like item icons, don't go through the page.) Returns its context."""
+    profile.mkdir(parents=True, exist_ok=True)
+    context = playwright.chromium.launch_persistent_context(profile, headless=True, args=["--blink-settings=imagesEnabled=false"], reduced_motion="reduce")
+    if calm:
+        context.add_init_script(CALM)
+    return context
+
+
 class Site:
     """Chrome with remilia.net open, unseen."""
 
     def __init__(self, playwright, calm=True):
-        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-        # Playwright's own headless Chromium, not your Google Chrome: your Chrome is left alone (macOS took the bot's
-        # copy for yours, so yours wouldn't open a window). REMIDEX_CHROME=chrome uses your installed Chrome instead.
-        # Unseen, the page needs no animations ("reduced motion", and see CALM) or pictures, and the site and its
-        # sign-in work the same. (The bot's own downloads, like item icons, don't go through the page.)
-        self.context = playwright.chromium.launch_persistent_context(PROFILE_DIR, channel=os.environ.get("REMIDEX_CHROME") or None, headless=True,
-                                                                     args=["--blink-settings=imagesEnabled=false"], reduced_motion="reduce")
-        if calm:
-            self.context.add_init_script(CALM)
+        self.context = open_browser(playwright, PROFILE_DIR, calm)
         # Chrome drops session-only cookies when it quits, and the sign-in may use them; put back the ones saved last run.
         saved = read_json(COOKIES_FILE).get("cookies")
         if saved:

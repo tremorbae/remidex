@@ -79,10 +79,7 @@ def reach():
     started = time.time()
     try:
         with sync_playwright() as playwright:
-            # The bot's own browser, as it opens it (see browser.Site): Playwright's headless Chromium, drawing calmly.
-            context = playwright.chromium.launch_persistent_context(APP_DIR / "reach-profile", channel=os.environ.get("REMIDEX_CHROME") or None, headless=True,
-                                                                    args=["--blink-settings=imagesEnabled=false"], reduced_motion="reduce")
-            context.add_init_script(browser.CALM)
+            context = browser.open_browser(playwright, APP_DIR / "reach-profile")  # (the bot's own browser, as it opens it)
             try:
                 page = context.pages[0] if context.pages else context.new_page()
                 response = page.goto(SITE, wait_until="load", timeout=90000)

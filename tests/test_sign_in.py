@@ -3,8 +3,6 @@ one at a time, only from the dashboard's own page; the password and two-factor c
 command line or a file); a page only shows its own sign-in's errors; and a first sign-in starts with every switch off
 (temp files, a stand-in Chrome and a local test server: nothing reaches RemiliaNET)."""
 import contextlib
-import http.client
-import http.server
 import io
 import json
 import subprocess
@@ -12,8 +10,6 @@ import tempfile
 import threading
 import time
 import types
-import urllib.error
-import urllib.request
 from pathlib import Path
 import support
 
@@ -27,27 +23,17 @@ tmp = Path(tempfile.mkdtemp())
 support.patch(STATE_FILE=tmp / "state.json", COOKIES_FILE=tmp / "cookies.json", OVERRIDES_FILE=tmp / "overrides.json")
 dashboard.LOG_FILE = tmp / "bot.log"
 
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
-threading.Thread(target=server.serve_forever, daemon=True).start()
+ask = support.serve(dashboard)
 
 
 def send(body, path="/api/sign-in", origin=None):
-    request = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}", data=json.dumps(body).encode(), method="POST",
-                                     headers={"Host": f"127.0.0.1:{dashboard.PORT}", "Content-Type": "application/json", **({"Origin": origin} if origin else {})})
-    try:
-        with urllib.request.urlopen(request, timeout=10) as r:
-            return r.status, json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        return e.code, None
+    status, _, answer = ask(path, body, origin=origin)
+    return status, json.loads(answer) if status == 200 else None
 
 
 def get(path, host=None):
-    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
-    connection.request("GET", path, headers={"Host": host or f"127.0.0.1:{dashboard.PORT}"})
-    answer = connection.getresponse()
-    body = answer.read()
-    connection.close()
-    return answer.status, answer.getheader("Location"), body
+    status, headers, body = ask(path, host=host)
+    return status, headers.get("Location"), body
 
 
 def until(test):
@@ -278,7 +264,5 @@ browser.finish_sign_in([], False)
 ok(pb.read_json(tmp / "state.json") == {"handle": "me", "next_slot_at": 5}, "signing in again lifts the pause and keeps the rest")
 ok(pb.read_json(tmp / "overrides.json") == {"social": {"pokes": True}}, "and keeps your switches")
 ok("RemiDex" in LOGIN_HELP and "install line" not in LOGIN_HELP, "the signed-out notice points at RemiDex")
-ok(not hasattr(browser, "login") and "--login" not in (support.ROOT / "install_browser.sh").read_text()
-   and "--login" not in (support.ROOT / "install_windows.py").read_text(), "there's no other way to sign in: no Chrome window")
-server.shutdown()
+ok(not hasattr(browser, "login") and "--login" not in (support.ROOT / "install_browser.sh").read_text(), "there's no other way to sign in: no Chrome window")
 ok.done()
