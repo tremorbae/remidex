@@ -3086,7 +3086,11 @@ $("tabs").append(...TABS.map(([k, , en]) => {
 
 async function refresh() {
   try {
-    data = await (await fetch("/api/status", {cache: "no-store"})).json(); fetchedAt = Date.now() / 1000;
+    const r = await fetch("/api/status", {cache: "no-store"});
+    if (r.status === 401) { location.replace("/"); return; }  // (the website: signed out of RemiDex meanwhile, in another tab say)
+    const answer = r.ok ? await r.json() : null;  // (anything else, like the host's error page while RemiDex restarts, is no answer)
+    if (!answer || typeof answer !== "object") throw new Error(`HTTP ${r.status}`);
+    data = answer; fetchedAt = Date.now() / 1000;
   } catch (e) {
     $("dot").className = "status bad"; $("handle").textContent = "dashboard offline";
     return;
@@ -3103,11 +3107,23 @@ function refreshSoon() {  // at most about once a second, however many changes c
   if (refreshTimer) return;
   refreshTimer = setTimeout(() => { refreshTimer = null; lastRefresh = Date.now(); refresh(); }, Math.max(150, 1500 - (Date.now() - lastRefresh)));
 }
+let lostAt = 0;  // when the live connection went (0: it's there)
 function listen() {
   const stream = new EventSource("/api/stream");
   stream.onmessage = () => { live = true; refreshSoon(); };
-  stream.onopen = () => { live = true; };
-  stream.onerror = () => { live = false; };  // the browser reconnects by itself
+  stream.onopen = () => {
+    live = true;
+    // Back after a while without it: RemiDex restarted meanwhile (an update, say), or this computer slept. The page as it
+    // is now, with any pictures that couldn't load meanwhile; but never while you're typing something.
+    const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName) && document.activeElement.value;
+    if (lostAt && Date.now() - lostAt > 8000 && !typing) location.reload();
+    lostAt = 0;
+  };
+  stream.onerror = () => {
+    live = false;
+    lostAt = lostAt || Date.now();
+    if (stream.readyState === EventSource.CLOSED) setTimeout(listen, 5000);  // (refused outright, as while it restarts: the browser won't ask again by itself)
+  };
 }
 if ("EventSource" in window) listen();
 setInterval(() => { if (!live || Date.now() - lastRefresh > 30000) { lastRefresh = Date.now(); refresh(); } }, 5000);
