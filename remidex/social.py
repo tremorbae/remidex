@@ -15,18 +15,20 @@ from remidex.core import (
     DASH_DIR,
     DELAY,
     FEED_US_FILE,
+    HOSTED,
     ICONS_PER_RUN,
     PEOPLE_PICS,
+    SHARED_DIR,
     SITE,
     STATE_FILE,
     USER_AGENT,
     VIEWS_KEPT,
     as_dict,
     editing,
+    homes,
     http_error,
     log,
     read_json,
-    someone_looking,
     today,
     write_json,
 )
@@ -61,9 +63,8 @@ CRAWL_PAGES_PER_RUN = 20  # friend-list pages read per look, to find more people
 CRAWL_MAX_PAGES_PER_USER = 4  # first 200 friends of each person is plenty to keep discovering
 ACCEPT_PER_RUN = 20  # friend requests accepted per look (see accept_requests)
 ASK_AGAIN = 24 * 3600  # with pokes on manual, friend requests go out on their own: look at each person once a day at most
-REMILIA_FEED_FILE = DASH_DIR / "remilia_activity.json"  # RemiliaNET's newest activity, for the dashboard (while it's open)
+REMILIA_FEED_FILE = SHARED_DIR / "remilia_activity.json"  # RemiliaNET's newest activity, for the dashboard (the same for everyone)
 FEED_SHOWN = 60  # events kept for it
-FEED_SHOW_EVERY = 2  # seconds: saved for it this often at most
 VIEWS_LOGGED_EVERY = 3600  # the bot's own profile views go in the log as one line this often at most (they were most of it)
 _VIEWS = {"n": 0, "since": 0.0}
 
@@ -200,8 +201,9 @@ def save_achievement_list():
         _ACHIEVEMENTS["changed"] = False
 
 
-def profile_edit_waiting():
-    edit = read_json(PROFILE_EDIT_FILE)
+def profile_edit_waiting(path=None):
+    """Whether a profile change from the dashboard is waiting to be made (path: another bot's PROFILE_EDIT_FILE)."""
+    edit = read_json(path or PROFILE_EDIT_FILE)
     return bool(edit) and not edit.get("done_at")
 
 
@@ -446,22 +448,45 @@ def discover(site, state):
     return known
 
 
-_ME = {"handle": None, "at": 0}
+_PEOPLE = {"at": 0.0, "files": {}}
 
 
-def my_handle():
-    """Your RemiliaNET handle, from the bot's state (looked at again every minute)."""
-    if time.time() - _ME["at"] > 60:
-        _ME.update(handle=read_json(STATE_FILE).get("handle"), at=time.time())
-    return _ME["handle"]
+def news_files():
+    """Where news about each bot's person goes: {their RemiliaNET handle: their FEED_US_FILE}. On a Mac, just yours; on
+    the website, everyone's. Looked at again every minute (someone new signs up, say)."""
+    if time.time() - _PEOPLE["at"] > 60:
+        if HOSTED:
+            found = {read_json(home / STATE_FILE.name).get("handle"): home / FEED_US_FILE.name for home in homes()}
+        else:
+            found = {read_json(STATE_FILE).get("handle"): FEED_US_FILE}
+        _PEOPLE.update(at=time.time(), files={h: f for h, f in found.items() if isinstance(h, str) and h})
+    return _PEOPLE["files"]
+
+
+def share_feed(events, now, recent):
+    """What one message from the activity feed means: who it shows (lately active, for profile views and finding people),
+    RemiliaNET's newest activity for the dashboards (recent: the newest events), and news for each person it's about
+    (not what they did themselves), for their bot to look at right away and their dashboard to show."""
+    recent.extend({**e, "seen_at": now} for e in events if isinstance(e, dict))
+    write_json(REMILIA_FEED_FILE, {"events": list(recent), "at": now})
+    try:
+        store.feed_touch(set(feed_handles(events)))
+    except sqlite3.Error as e:
+        log(f"History: couldn't note who the feed showed ({e}).")
+    for handle, path in news_files().items():
+        theirs = [e for e in events if isinstance(e, dict) and handle in set(feed_handles(e)) and as_dict(e.get("from")).get("userHandle") != handle]
+        if theirs:
+            with editing(path):
+                news = (read_json(path).get("events") or []) + [{**e, "seen_at": now} for e in theirs]
+                write_json(path, {"events": news[-40:], "at": now})
 
 
 def watch_feed():
-    """Runs forever: notes when each user last showed up in the public activity feed, for runs to view them.
+    """Runs forever: notes what the public activity feed shows (see share_feed). On the website, one watches for everyone.
 
     Sightings older than a day are dropped (see store.FEED_KEEP)."""
     drops = 0  # disconnects since the feed last connected
-    recent, shown_at = collections.deque(maxlen=FEED_SHOWN), 0.0  # the newest events, for the dashboard's RemiliaNET Activity
+    recent = collections.deque(maxlen=FEED_SHOWN)  # the newest events, for the dashboard's RemiliaNET Activity
     while True:
         try:
             request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT, "Accept": "text/event-stream"})
@@ -471,26 +496,12 @@ def watch_feed():
                     line = raw.decode("utf-8", "replace")
                     if not line.startswith("data:"):
                         continue
-                    now = time.time()
                     try:
                         events = json.loads(line[5:])
                         events = events if isinstance(events, list) else [events]
                     except ValueError:
                         continue  # one garbled message: skip it, keep the connection
-                    recent.extend({**e, "seen_at": now} for e in events if isinstance(e, dict))
-                    if now - shown_at >= FEED_SHOW_EVERY and someone_looking():
-                        write_json(REMILIA_FEED_FILE, {"events": list(recent), "at": now})
-                        shown_at = now
-                    try:
-                        store.feed_touch(set(feed_handles(events)))
-                    except sqlite3.Error as e:
-                        log(f"History: couldn't note who the feed showed ({e}).")
-                    me = my_handle()
-                    mine = [e for e in events if isinstance(e, dict) and me and me in set(feed_handles(e))
-                            and as_dict(e.get("from")).get("userHandle") != me]  # not what you did yourself
-                    if mine:  # live news about you, for the bot to look at right away and the dashboard to show
-                        news = (read_json(FEED_US_FILE).get("events") or []) + [{**e, "seen_at": now} for e in mine]
-                        write_json(FEED_US_FILE, {"events": news[-40:], "at": now})
+                    share_feed(events, time.time(), recent)
         except socket.timeout:
             pass  # a quiet feed; just reconnect
         except (OSError, ValueError) as e:

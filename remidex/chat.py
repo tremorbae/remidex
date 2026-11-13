@@ -28,9 +28,9 @@ def sync_chat(site):
         write_json(CHAT_FILE, {"at": time.time(), "chat": body})
 
 
-def chat_waiting():
-    """Whether there's a message from the dashboard to send."""
-    return bool(read_json(CHAT_OUT_FILE).get("queue"))
+def chat_waiting(path=None):
+    """Whether there's a message from the dashboard to send (path: another bot's CHAT_OUT_FILE)."""
+    return bool(read_json(path or CHAT_OUT_FILE).get("queue"))
 
 
 def attachments(item):

@@ -57,10 +57,10 @@ def valid_steps(steps):
             "sacrifice": picked("sacrifice", (SACRIFICE, PURPLE)), "hammer": picked("hammer", HAMMERS)}
 
 
-def load_settings():
-    """How the bot runs: what was picked on the dashboard (overrides.json). A switch nobody has flipped yet is on, except
-    junk cubes (a first sign-in turns them all off: see browser.first_sign_in_defaults)."""
-    overrides = read_json(OVERRIDES_FILE)
+def load_settings(path=None):
+    """How the bot runs: what was picked on the dashboard (overrides.json, or path: another bot's). A switch nobody has
+    flipped yet is on, except junk cubes (a first sign-in turns them all off: see browser.first_sign_in_defaults)."""
+    overrides = read_json(path or OVERRIDES_FILE)
     flipped = {**(overrides.get("beetleboy") or {}), **(overrides.get("social") or {}), **(overrides.get("crafting") or {})}
 
     def switch(action, default=True):

@@ -1,7 +1,10 @@
 .git
 .gitignore
+.dockerignore
+.claude
 tests
 **/__pycache__
 *.md
 get.sh
 install_browser.sh
+Dockerfile

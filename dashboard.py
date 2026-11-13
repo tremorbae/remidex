@@ -33,9 +33,10 @@ import quests
 import store
 from remidex import browser, says
 
-HOST, PORT = "127.0.0.1", 8642
+HOST, PORT = "127.0.0.1", int(os.environ.get("REMIDEX_PORT") or 8642)  # (on the website, each person's dashboard has a port of its own)
 NAMES = {f"remidex.localhost:{PORT}", f"localhost:{PORT}", f"127.0.0.1:{PORT}"}  # what the dashboard answers to (a .localhost name is always this computer)
-ADDRESS = f"http://remidex.localhost:{PORT}"  # only answers on this Mac
+ADDRESS = f"http://remidex.localhost:{PORT}"  # only answers on this computer (the website passes requests on to it: see hosted/web.py)
+SCHEDULER_FILE = bot.SHARED_DIR / "scheduler.json"  # on the website: the scheduler that runs everyone's rounds says it's there
 ITEM_KEY = re.compile(r"^[a-z0-9_]{1,60}$")
 MAX_LOCKED = 300  # items that can be switched off at once
 PAGE = Path(__file__).with_name("dashboard.html")
@@ -511,7 +512,10 @@ _jobs = {"at": 0.0, "running": {}}
 
 
 def running_jobs():
-    """Which background jobs have a live process (launchd's): asked at most every 10 seconds."""
+    """Which background jobs have a live process (launchd's; on the website, the scheduler that runs everyone's rounds):
+    asked at most every 10 seconds."""
+    if bot.HOSTED:
+        return {"bot": time.time() - (bot.read_json(SCHEDULER_FILE).get("at") or 0) < 60}
     if time.time() - _jobs["at"] < 10:
         return _jobs["running"]
     try:
@@ -885,7 +889,7 @@ _status_lock = threading.Lock()
 
 SIGN_IN_TIMEOUT = 150 + browser.CODE_WAIT  # the most a sign-in from the dashboard takes (it's usually half a minute, plus typing a code)
 CODE = re.compile(r"\d{4,10}")  # a two-factor code (RemiliaNET's are 6 digits)
-_sign_in = {"running": False, "step": None, "error": None, "attempt": None, "stopped": False, "proc": None, "at": 0.0}  # the last one
+_sign_in = {"running": False, "step": None, "error": None, "attempt": None, "stopped": False, "proc": None, "at": 0.0, "handle": None}  # the last one
 _sign_in_lock = threading.Lock()
 
 
@@ -929,6 +933,7 @@ def run_sign_in(email, password):
             proc.kill()
         watchdog.cancel()
         error = None if result.get("ok") is True else str(result.get("error") or ("Signing in took too long. Try again" if timed_out else error))[:300]
+        _sign_in["handle"] = result.get("handle") if result.get("ok") is True and isinstance(result.get("handle"), str) else None
     with _sign_in_lock:
         _sign_in.update(running=False, step=None, proc=None, error=None if _sign_in["stopped"] else error, at=time.time())
     _status_cache["at"] = 0
@@ -948,10 +953,11 @@ def tell_sign_in(message):
 def sign_in_view():
     """GET /api/sign-in, for the sign-in page: whether the bot's signed in; how a sign-in from it is going ("step": "code"
     while it waits for your two-factor code, "checking" once sent; "attempt" says which sign-in, so a page only shows its
-    own errors); and your profile's colour (for the page's colour theme)."""
+    own errors; "handle": who the last one signed in as, for the website); and your profile's colour (for the page's
+    colour theme)."""
     hue = bot.read_json(bot.DASH_DIR / "look.json").get("color")
     return {"signed_in": not browser.signed_out(), "running": _sign_in["running"], "step": _sign_in["step"], "error": _sign_in["error"],
-            "attempt": _sign_in["attempt"], "hue": hue if isinstance(hue, (int, float)) else 204}
+            "attempt": _sign_in["attempt"], "handle": _sign_in["handle"], "hue": hue if isinstance(hue, (int, float)) else 204}
 
 
 def status_body():
@@ -1016,6 +1022,7 @@ def status():
                for v in saved_views.get("notes") or [] if isinstance(v, dict) and v.get("handle")]
     result = {
         "now": now,
+        "hosted": bot.HOSTED,  # (the website: the page offers your account's page, and says nothing about installing)
         "look": {"hue": look.get("color") if isinstance(look.get("color"), (int, float)) else 204,
                  "name": look.get("displayName"), "pfp": (bot.DASH_DIR / "pfp").exists()},
         "jobs": running_jobs(),

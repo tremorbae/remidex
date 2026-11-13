@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from remidex.places import APP_DIR, LOG_FILE, VENV_PYTHON  # noqa: F401 (other parts import these from here)
+from remidex.places import APP_DIR, HOSTED, LOG_FILE, SHARED_DIR, VENV_PYTHON, homes  # noqa: F401 (other parts import these from here)
 
 
 SITE = "https://www.remilia.net"
@@ -21,7 +21,8 @@ STATE_FILE = APP_DIR / "state.json"
 OVERRIDES_FILE = APP_DIR / "overrides.json"  # the switches, picks and hammer limits set on the dashboard
 GAME_FILE = APP_DIR / "game.json"  # the last BeetleBoy state and cards seen, for the dashboard
 FEED_US_FILE = APP_DIR / "feed_us.json"  # live news about you from the activity feed (written by --watch-feed)
-LOGIN_HELP = "To sign in again, open RemiDex (http://remidex.localhost:8642)"
+ADDRESS = os.environ.get("REMIDEX_ADDRESS") or "http://remidex.localhost:8642"  # where RemiDex is (the website's address, on the website)
+LOGIN_HELP = f"To sign in again, open RemiDex ({ADDRESS})"
 DASH_DIR = APP_DIR / "dashboard"  # your theme, profile picture and item icons, for the dashboard
 PEOPLE_PICS = DASH_DIR / "viewers"  # profile pictures for the dashboard's activity: who viewed you, and who was poked
 ICONS_PER_RUN = 25  # item icons fetched per run, so a big inventory fills in over a few runs
@@ -115,9 +116,10 @@ LOOKING_FILE = APP_DIR / "dashboard_open.json"  # the dashboard writes this whil
 LOOKING_FOR = 90  # ... and it counts as open this long after its last ask
 
 
-def someone_looking():
-    """Whether the dashboard is open and visible (it says so every few seconds while it is)."""
-    return time.time() - (read_json(LOOKING_FILE).get("at") or 0) < LOOKING_FOR
+def someone_looking(path=None):
+    """Whether the dashboard is open and visible (it says so every few seconds while it is). path: another bot's
+    LOOKING_FILE (on the website, its scheduler asks about everyone's)."""
+    return time.time() - (read_json(path or LOOKING_FILE).get("at") or 0) < LOOKING_FOR
 
 
 def today(state):

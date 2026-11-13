@@ -8,18 +8,20 @@ from pathlib import Path
 
 import quests
 from remidex.core import (
-    APP_DIR,
     ASSEMBLE,
+    HOSTED,
     JUNK_CUBE_CRAFT,
     KEY,
     LOG_FILE,
     OVERRIDES_FILE,
     PURPLE,
     SACRIFICE,
+    SHARED_DIR,
     SMASH,
     TIN_HAMMER_CRAFT,
     editing,
     fits_match,
+    homes,
     log,
     read_json,
     write_json,
@@ -27,8 +29,10 @@ from remidex.core import (
 from remidex.settings import alert, valid_make
 
 
-CRAFT_STATS_FILE = APP_DIR / "craft_stats.json"  # how each recipe has gone for you, for the planner to learn from
-REMOVED_FILE = APP_DIR / "removed_recipes.json"  # recipes the game says don't exist, left out of the recipe book for good
+# Shared by everyone on the website (on a Mac, they're just yours): every craft counts toward everyone's odds and the
+# recipes everyone sees verified, and a recipe the game says doesn't exist is gone for everyone.
+CRAFT_STATS_FILE = SHARED_DIR / "craft_stats.json"  # how each recipe has gone, for the planner to learn from
+REMOVED_FILE = SHARED_DIR / "removed_recipes.json"  # recipes the game says don't exist, left out of the recipe book for good
 ADAMANTINE = 5
 CATEGORY_BEETLE, CATEGORY_HAMMER = 2, 4
 TASK_LOG_KEEP = 600  # crafts kept for the dashboard's craft console and plan, for each Auto make or quest being worked on
@@ -143,21 +147,28 @@ def recipe_book():
 
 
 def remove_recipe(label, tried=None):
-    """Takes a recipe the game said doesn't exist ("NOTHING HAPPENED") out of the recipe book for good: it stays out
-    after reinstalls too. Auto makes picked by recipe keep pointing at the same recipes (they're numbered by place in
-    the book), and one picked by this recipe goes on by any recipe. tried: what was crafted, for the dashboard."""
+    """Takes a recipe the game said doesn't exist ("NOTHING HAPPENED") out of the recipe book for good, for everyone: it
+    stays out after reinstalls too. Everyone's Auto makes picked by recipe keep pointing at the same recipes (they're
+    numbered by place in the book), and one picked by this recipe goes on by any recipe. tried: what was crafted, for
+    the dashboard."""
     book = recipe_book()[0]
     index = next((n for n, r in enumerate(book["recipes"]) if recipe_label(r) == label), None) if book else None
-    removed = read_json(REMOVED_FILE)
-    removed.setdefault("recipes", {})[label] = {"at": time.time(), "tried": tried}
-    write_json(REMOVED_FILE, removed)
-    if index is not None:
-        with editing(OVERRIDES_FILE):
-            overrides = read_json(OVERRIDES_FILE)
+    with editing(REMOVED_FILE):
+        removed = read_json(REMOVED_FILE)
+        if label in removed.get("recipes", {}):
+            index = None  # (someone else's bot took it out already, and moved everyone's Auto makes along)
+        removed.setdefault("recipes", {})[label] = {"at": time.time(), "tried": tried}
+        write_json(REMOVED_FILE, removed)
+    everyone = [home / OVERRIDES_FILE.name for home in homes()] if HOSTED else [OVERRIDES_FILE]
+    for path in everyone if index is not None else []:
+        with editing(path):
+            overrides = read_json(path)
+            moved = False
             for make in [overrides.get("make"), *(overrides.get("make_queue") or [])]:
                 if isinstance(make, dict) and type(make.get("recipe")) is int and make["recipe"] >= index:
-                    make["recipe"] = None if make["recipe"] == index else make["recipe"] - 1
-            write_json(OVERRIDES_FILE, overrides)
+                    make["recipe"], moved = None if make["recipe"] == index else make["recipe"] - 1, True
+            if moved:
+                write_json(path, overrides)
     _REMOVED["checked"] = 0  # the book without it, straight away
 
 
@@ -421,7 +432,10 @@ def learn_from_log(bag):
             continue
         if fit := craft_specs(match[1].lower(), items, made, book, catalog):
             count_craft(stats, recipe_label(fit[0]), made)
-    write_json(CRAFT_STATS_FILE, stats)
+    with editing(CRAFT_STATS_FILE):
+        if CRAFT_STATS_FILE.exists():
+            return  # (another bot started them meanwhile)
+        write_json(CRAFT_STATS_FILE, stats)
     if stats:
         log(f"BeetleCraft: learned from {sum(s['n'] for s in stats.values())} crafts in the log ({len(stats)} recipes).")
 
@@ -879,12 +893,14 @@ def note_craft(state, task, label, what, made, aim=None, source=0):
     """Notes a craft that went through: in the stats the planner learns from, and (with task, the Auto make or quest it
     was for) for the dashboard's craft console. made: the game's card for what came out, None if the smash failed. aim:
     the name of what the plan wanted from it; source: 2 if it was made for a waiting step, else 0 (see ready_crafts)."""
-    stats, r = read_json(CRAFT_STATS_FILE), recipe_named(label)
-    before = times_worked(r, stats[label]) if r and label in stats else 0
-    count_craft(stats, label, made and made["beetle"])
-    if proven_low_odds(label, stats[label]):
-        stats[label]["low"] = True  # (for good: see proven_low_odds)
-    write_json(CRAFT_STATS_FILE, stats)
+    r = recipe_named(label)
+    with editing(CRAFT_STATS_FILE):  # (on the website, everyone's bots count into it: one at a time, so none is lost)
+        stats = read_json(CRAFT_STATS_FILE)
+        before = times_worked(r, stats[label]) if r and label in stats else 0
+        count_craft(stats, label, made and made["beetle"])
+        if proven_low_odds(label, stats[label]):
+            stats[label]["low"] = True  # (for good: see proven_low_odds)
+        write_json(CRAFT_STATS_FILE, stats)
     _STATS["checked"] = 0  # count it straight away
     if r and not before and made and makes(r, made["beetle"], *recipe_book()):  # the first time it's worked: it's verified now
         log(f"BeetleCraft: verified a recipe: {recipe_words(r)}.")

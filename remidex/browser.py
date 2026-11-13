@@ -147,7 +147,9 @@ def open_browser(playwright, profile, calm=True):
     page needs no animations ("reduced motion", and CALM unless calm is False) or pictures, and the site and its sign-in
     work the same. (The bot's own downloads, like item icons, don't go through the page.) Returns its context."""
     profile.mkdir(parents=True, exist_ok=True)
-    context = playwright.chromium.launch_persistent_context(profile, headless=True, args=["--blink-settings=imagesEnabled=false"], reduced_motion="reduce")
+    # (A small disk cache: RemiliaNET's pages still come mostly from it, and a profile can't grow to gigabytes.)
+    context = playwright.chromium.launch_persistent_context(profile, headless=True, args=["--blink-settings=imagesEnabled=false", "--disk-cache-size=20000000"],
+                                                            reduced_motion="reduce")
     if calm:
         context.add_init_script(CALM)
     return context

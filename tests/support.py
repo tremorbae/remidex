@@ -15,26 +15,43 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load():
-    """The bot (poke_browser), with Playwright stubbed out. It keeps everything in a new, empty folder (REMIDEX_HOME), so
-    a test never reads or changes what RemiDex has saved on this computer, and gives the same result on any computer.
-    Nothing but a test's own server on this computer can be reached: a test is never online."""
-    os.environ["REMIDEX_HOME"] = tempfile.mkdtemp()  # (before the bot is loaded: it's where it keeps things)
+def offline():
+    """Playwright stubbed out (no browser), and nothing but this computer can be reached: a test is never online. (Also
+    for the programs a test starts: see offline.py.)"""
     sys.modules.setdefault("playwright", types.ModuleType("playwright"))
     sync = types.ModuleType("playwright.sync_api")
     sync.Error, sync.sync_playwright = Exception, None
     sys.modules["playwright.sync_api"] = sync
     online = urllib.request.urlopen
 
-    def offline(request, *args, **kwargs):
+    def only_here(request, *args, **kwargs):
         url = request if isinstance(request, str) else request.full_url
         if urllib.parse.urlsplit(url).hostname not in ("127.0.0.1", "localhost"):
             raise OSError(f"the tests are offline ({url})")
         return online(request, *args, **kwargs)
-    urllib.request.urlopen = offline
-    sys.path.insert(0, str(ROOT))
+    urllib.request.urlopen = only_here
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+
+def load():
+    """The bot (poke_browser), offline (see offline). It keeps everything in a new, empty folder (REMIDEX_HOME), so a test
+    never reads or changes what RemiDex has saved on this computer, and gives the same result on any computer."""
+    os.environ["REMIDEX_HOME"] = tempfile.mkdtemp()  # (before the bot is loaded: it's where it keeps things)
+    offline()
     import poke_browser
     return poke_browser
+
+
+def load_site(hosts="remidex.test"):
+    """The website (hosted/web.py), offline, with its disk a new, empty folder: returns the module. hosts: the names it
+    answers to. Before anything else of RemiDex is loaded (it's the website's folders they all use)."""
+    os.environ.pop("REMIDEX_HOME", None)
+    os.environ.update(REMIDEX_DATA=tempfile.mkdtemp(), REMIDEX_HOSTS=hosts, REMIDEX_ADDRESS=f"https://{hosts}")
+    offline()
+    sys.path.insert(0, str(ROOT / "hosted"))
+    import web
+    return web
 
 
 def serve(dashboard):

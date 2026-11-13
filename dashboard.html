@@ -1063,7 +1063,8 @@ function render(full = true) {
   $("dot").title = botTip();
   $("handle").replaceChildren(...(data.handle ? [...tildeName(data.handle), data.needs_login ? " · signed out" : running ? "" : " · stopped"] : ["–"]));
   $("banner").style.display = running ? "none" : "block";
-  $("banner").textContent = "The bot isn't running. Start it with ./install_browser.sh in the project folder.";
+  $("banner").textContent = data.hosted ? "RemiDex's server is starting up. Your bot carries on in a minute."
+    : "The bot isn't running. Start it with ./install_browser.sh in the project folder.";
 
   $("foot").textContent = data.handle ? `@${data.handle}` : "";
   const p = data.pokes, st = data.settings;
@@ -1528,6 +1529,7 @@ function renderProfile() {  // your picture and bio, centered, then your top 5 f
     editNote ? el("div", {className: `pd-msg ${editNote[0]}`, textContent: editNote[1]}) : "",
     p.handle ? el("div", {className: "pd-actions"}, Object.assign(el("button", {type: "button", className: "makebtn plain", textContent: "✎ EDIT PROFILE"}), {onclick: () => { editing = true; profileEditor(); }})) : "",
     p.handle ? el("a", {className: "pd-open", href: url(p.handle), target: "_blank", rel: "noopener", textContent: "Open your profile on RemiliaNET ↗"}) : "",
+    data && data.hosted ? el("a", {className: "pd-open", href: "/account", style: "display:block", textContent: "Your RemiDex account: sign out, or delete it"}) : "",
     !p.handle ? el("div", {className: "pd-handle", textContent: "Your profile shows up here once the bot has finished its first run, in a few minutes."})
       : p.live ? "" : el("div", {className: "pd-handle", textContent: `RemiliaNET can't be reached right now: this is from ${p.fetched_at ? when(p.fetched_at) : "earlier"}.`}));
 }

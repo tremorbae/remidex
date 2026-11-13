@@ -18,9 +18,10 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-from remidex.places import APP_DIR
+from remidex.places import APP_DIR, SHARED_DIR
 
 DB_FILE = APP_DIR / "remidex.db"
+FEED_DB = SHARED_DIR / "remidex.db"  # who the activity feed showed lately: the same for everyone (on a Mac, that's DB_FILE)
 VIEW_EVERY = 24 * 3600  # someone viewed is left alone this long
 LOG_MOST = 4_000_000  # bytes: past this, the log is trimmed (see trim_log)...
 LOG_KEEP = 2_000_000  # ...to about its newest this many
@@ -45,11 +46,12 @@ SMASH_FAILED = re.compile(r"^BeetleCraft: Smash failed: (a|\d+) Green Beetles? l
 _ready = set()
 
 
-def connect():
-    """A connection to the database, made (with its tables) if it isn't there yet."""
-    db = sqlite3.connect(str(DB_FILE), timeout=15, isolation_level=None)
-    if str(DB_FILE) not in _ready:
-        DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+def connect(path=None):
+    """A connection to the database (DB_FILE, or path), made (with its tables) if it isn't there yet."""
+    path = path or DB_FILE
+    db = sqlite3.connect(str(path), timeout=15, isolation_level=None)
+    if str(path) not in _ready:
+        path.parent.mkdir(parents=True, exist_ok=True)
         for attempt in range(8):  # the bot and the feed watcher can start it at the same moment: the loser waits a little
             try:
                 db.execute("PRAGMA journal_mode=WAL")  # the bot and the dashboard can use it at the same time
@@ -59,7 +61,7 @@ def connect():
                 if attempt == 7:
                     raise
                 time.sleep(0.4)
-        _ready.add(str(DB_FILE))
+        _ready.add(str(path))
     db.execute("PRAGMA synchronous=NORMAL")
     return db
 
@@ -305,7 +307,7 @@ def mark_viewed(handle):
 def feed_touch(handles):
     """Notes that the activity feed just showed these people."""
     now = time.time()
-    db = connect()
+    db = connect(FEED_DB)
     try:
         db.executemany("INSERT OR REPLACE INTO feed_seen(handle, at) VALUES (?, ?)", [(h, now) for h in handles])
         _prune(db, "feed_seen", FEED_KEEP)
@@ -315,7 +317,7 @@ def feed_touch(handles):
 
 def feed_recent():
     """{handle: when the feed last showed them} for the last day, newest first."""
-    db = connect()
+    db = connect(FEED_DB)
     try:
         return dict(db.execute("SELECT handle, at FROM feed_seen WHERE at > ? ORDER BY at DESC", (time.time() - FEED_KEEP,)).fetchall())
     finally:

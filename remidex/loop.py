@@ -12,6 +12,7 @@ from remidex.core import (
     FEED_US_FILE,
     GAME_FILE,
     LOGIN_HELP,
+    LOOKING_FILE,
     NeedsLogin,
     OVERRIDES_FILE,
     PlaywrightError,
@@ -28,6 +29,7 @@ from remidex.core import (
 from remidex.settings import alert, current_settings, load_settings
 from remidex.state import cache_for_dashboard, keep_history, save_game
 from remidex.social import (
+    PROFILE_EDIT_FILE,
     accept_requests,
     apply_profile_edit,
     cache_profile_views,
@@ -37,7 +39,7 @@ from remidex.social import (
     watch_feed,
 )
 from remidex.beetle import play_beetleboy
-from remidex.chat import chat_waiting, send_chat, sync_chat
+from remidex.chat import CHAT_OUT_FILE, chat_waiting, send_chat, sync_chat
 from remidex.craft import beetlecraft
 from remidex.browser import Site, sign_in_from_dashboard
 
@@ -53,16 +55,16 @@ SESSION_MAX = 10 * 60  # ...or after this long, even with things still due: they
 VIEW_TIME = 60  # a round spends this long at most viewing the profiles of people in the activity feed (seconds)
 ERROR_RETRY = 60  # after a round that failed, the next starts this soon; after two in a row, after the usual rest
 STOP_AFTER_FAILURES = 5  # this many failed pokes in a row: the site is unhappy, so no more pokes this round
-_STATE = {"key": None, "value": {}}
-_ROUNDS = {"failed": 0}  # rounds in a row that ended in an error
+_STATES = {}  # path -> (its mark of change, what's in it)
 
 
-def peek_state():
-    """state.json for looking at only (it's big, so read again only when it changes)."""
-    key = stamp(STATE_FILE)
-    if key != _STATE["key"]:
-        _STATE.update(key=key, value=read_json(STATE_FILE))
-    return _STATE["value"]
+def peek_state(path=None):
+    """state.json (or path: another bot's), for looking at only: it's big, so it's read again only when it changes."""
+    path = path or STATE_FILE
+    key = stamp(path)
+    if path not in _STATES or _STATES[path][0] != key:
+        _STATES[path] = (key, read_json(path))
+    return _STATES[path][1]
 
 
 def next_tasks(state, settings):
@@ -267,13 +269,56 @@ def hiccup(e):
     return None
 
 
+def round_wanted(home=None):
+    """Whether a bot should have a round now: when something's due (a poke, a claim or hunt, a craft check, who's poked
+    you, friend requests) and the rest after the last round is over (see chrome_due_in), or straight away when you pick
+    something on the dashboard, send a chat message or change your profile, or are using the dashboard. Never while a
+    new sign-in is needed. News about you from the activity feed is noted for the next round. home: another bot's
+    folder (the website's scheduler asks about everyone's), else this one's."""
+    where = (lambda f: home / f.name) if home else (lambda f: f)  # noqa: E731
+    state = peek_state(where(STATE_FILE))
+    if state.get("needs_login") or not where(COOKIES_FILE).exists():
+        return False
+    if changed(where(FEED_US_FILE)):  # something happened to you on RemiliaNET: look at it in the next round
+        state = read_json(where(STATE_FILE))
+        news_about_you(state)
+        write_json(where(STATE_FILE), state)
+    settings = load_settings(where(OVERRIDES_FILE)) if home else current_settings()
+    woken = [profile_edit_waiting(where(PROFILE_EDIT_FILE)), chat_waiting(where(CHAT_OUT_FILE)), someone_looking(where(LOOKING_FILE)),
+             changed(where(OVERRIDES_FILE))]  # (all asked, so none is missed)
+    return chrome_due_in(peek_state(where(STATE_FILE)), settings) <= 0 or any(woken)
+
+
+def run_round():
+    """--round (the website's scheduler starts one for a bot when round_wanted says so), and each round on a Mac: one
+    round (see chrome_session), then the rest after it (see chrome_due_in). After a round that failed, the next starts in
+    a minute; after two in a row, after the usual rest. (They're counted in the state, so a bot started afresh for each
+    round counts them too.)"""
+    state = read_json(STATE_FILE)
+    try:
+        chrome_session(state, current_settings())
+        state.pop("rounds_failed", None)
+    except NeedsLogin as e:
+        pause_for_login(e)
+        return
+    except Exception as e:  # anything else too: launchd would restart a crashed bot at once, over and over, each time at the site
+        state["rounds_failed"] = state.get("rounds_failed", 0) + 1
+        again = "trying again in a minute" if state["rounds_failed"] == 1 else "trying again after the usual rest"
+        if isinstance(e, (RuntimeError, OSError, PlaywrightError)):
+            log(hiccup(e) or f"Error: {e} ({again})")
+        else:
+            log(f"Error: something unexpected ({type(e).__name__}: {e}); {again}.")
+            traceback.print_exc()  # (the details, for working out what happened)
+    rest = ERROR_RETRY if state.get("rounds_failed") == 1 else random.uniform(*current_settings()["rest"])
+    state["rest_until"] = time.time() + rest
+    write_json(STATE_FILE, state)
+    report(state, current_settings(), "Resting between rounds (Chrome is closed)", chrome=False)
+
+
 def run_forever():
     """--scheduled: launchd starts this and keeps it running. Between rounds Chrome is closed and this only naps (it
-    never keeps the Mac awake: a Mac that sleeps catches up when it wakes). A round starts when something's due (a poke,
-    a claim or hunt, a craft check, who's poked you, friend requests) and the rest after the last round is over (see
-    chrome_due_in), or straight away when you pick something on the dashboard, send a chat message or change your
-    profile, or are using the dashboard. News about you from the activity feed waits for the next round. Waits quietly
-    while a new sign-in is needed."""
+    never keeps the Mac awake: a Mac that sleeps catches up when it wakes); a round starts when round_wanted says so.
+    Waits quietly while a new sign-in is needed."""
     state = read_json(STATE_FILE)
     state["craft_check_at"] = 0  # a restart (an update, say) looks at crafting straight away, not at the next 15-minute check
     state["views_check_at"] = 0  # and at who's looked at your profile (the dashboard's all-time count)
@@ -281,41 +326,13 @@ def run_forever():
     write_json(STATE_FILE, state)
     while True:
         keep_history()
+        if round_wanted():
+            run_round()
+            continue
         state = peek_state()
-        if state.get("needs_login") or not COOKIES_FILE.exists():
-            time.sleep(TICK)  # (carries on within seconds of a sign-in on the dashboard)
-            continue
-        settings = current_settings()
-        if changed(FEED_US_FILE):  # something happened to you on RemiliaNET: look at it in the next round
-            state = read_json(STATE_FILE)
-            news_about_you(state)
-            write_json(STATE_FILE, state)
-            state = peek_state()
-        due_in = chrome_due_in(state, settings)
-        woken = [profile_edit_waiting(), chat_waiting(), someone_looking(), changed(OVERRIDES_FILE)]  # (all asked, so none is missed)
-        if due_in > 0 and not any(woken):
-            report(state, settings, "Resting between rounds (Chrome is closed)", chrome=False)
-            time.sleep(min(due_in, TICK))  # short naps, so a Mac waking from sleep catches up straight away
-            continue
-        state = read_json(STATE_FILE)
-        try:
-            chrome_session(state, settings)
-            _ROUNDS["failed"] = 0
-        except NeedsLogin as e:
-            pause_for_login(e)
-            continue
-        except Exception as e:  # anything else too: launchd would restart a crashed bot at once, over and over, each time at the site
-            _ROUNDS["failed"] += 1
-            again = "trying again in a minute" if _ROUNDS["failed"] == 1 else "trying again after the usual rest"
-            if isinstance(e, (RuntimeError, OSError, PlaywrightError)):
-                log(hiccup(e) or f"Error: {e} ({again})")
-            else:
-                log(f"Error: something unexpected ({type(e).__name__}: {e}); {again}.")
-                traceback.print_exc()  # (the details, for working out what happened)
-        rest = ERROR_RETRY if _ROUNDS["failed"] == 1 else random.uniform(*current_settings()["rest"])
-        state["rest_until"] = time.time() + rest
-        write_json(STATE_FILE, state)
-        report(state, current_settings(), "Resting between rounds (Chrome is closed)", chrome=False)
+        if not state.get("needs_login") and COOKIES_FILE.exists():
+            report(state, current_settings(), "Resting between rounds (Chrome is closed)", chrome=False)
+        time.sleep(TICK)  # short naps, so a Mac waking from sleep catches up straight away (and a sign-in is noticed within seconds)
 
 
 def main():
@@ -324,12 +341,16 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="show who is due a poke or a view, without doing either")
     parser.add_argument("--scheduled", action="store_true", help="set by launchd: runs forever, poking on schedule")
     parser.add_argument("--watch-feed", action="store_true", help="record everyone in the activity feed; runs forever (launchd keeps it up)")
+    parser.add_argument("--round", action="store_true", help="set by the website's scheduler: one round now, then the rest after it")
     args = parser.parse_args()
 
     if args.watch_feed:
         watch_feed()
     if args.scheduled:
         run_forever()
+    if args.round:
+        run_round()
+        return
     if args.sign_in:
         sign_in_from_dashboard()
         return
