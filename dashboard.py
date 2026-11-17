@@ -973,8 +973,20 @@ def live_version():
     """A mark of everything the dashboard shows (the log, the game, settings, who's poked you...): it changes whenever any
     of that does, so the page can update the moment something happens."""
     files = [LOG_FILE, bot.GAME_FILE, bot.STATE_FILE, bot.OVERRIDES_FILE, bot.STATUS_FILE, bot.CRAFT_NOW_FILE, bot.FEED_US_FILE, bot.CRAFT_STATS_FILE, bot.REMOVED_FILE,
-             bot.PROFILE_EDIT_FILE, bot.MY_ACHIEVEMENTS_FILE, bot.DASH_DIR / "social.json", bot.DASH_DIR / "views.json", bot.DASH_DIR / "quests.json"]
+             bot.PROFILE_EDIT_FILE, bot.CLAIM_FILE, bot.MY_ACHIEVEMENTS_FILE, bot.DASH_DIR / "social.json", bot.DASH_DIR / "views.json", bot.DASH_DIR / "quests.json"]
     return tuple(bot.stamp(f) for f in files)
+
+
+def claims_view():
+    """The cards clicked on the dashboard, for the page: {action: {"waiting": true}} until the bot's done it, then
+    {"done_at", "error"} (error None: it worked)."""
+    waiting, view = bot.claims_waiting(), {}
+    for action, c in bot.read_json(bot.CLAIM_FILE).items():
+        if action in waiting:
+            view[action] = {"waiting": True}
+        elif action in bot.CLAIMS and isinstance(c, dict) and type(c.get("done_at")) in (int, float):
+            view[action] = {"done_at": c["done_at"], "error": c["error"] if isinstance(c.get("error"), str) else None}
+    return view
 
 
 def with_live_pokes(social, pics):
@@ -1037,6 +1049,7 @@ def status():
         "viewers": viewers,
         "achievements": remilia_achievements(),
         "profile_edit": {k: v for k, v in bot.read_json(bot.PROFILE_EDIT_FILE).items() if k in ("asked_at", "done_at", "ok", "error", "field")} or None,
+        "claims": claims_view(),
         "social": with_live_pokes([{**{k: n.get(k) for k in ("id", "type", "handle", "name", "count", "at", "state", "mutual")}, "pic": n["handle"] in pics}
                                    for n in bot.read_json(bot.DASH_DIR / "social.json").get("notes", []) if isinstance(n, dict) and n.get("handle") and n.get("id")], pics),
         "bot": bot.read_json(bot.STATUS_FILE) or None,  # what the bot says it's doing and what's next (see report in remidex/loop.py)
@@ -1421,6 +1434,7 @@ class Handler(BaseHTTPRequestHandler):
             POST /api/step {"task": "make" or "goal", "label": a recipe, "skip": true}  a step's options: do it last (or false: back
                  in order); or "first": true (work on it first) or false; or "sacrifice" or "hammer" for it (null: the bot's choice)
             POST /api/looking {}                                          the page is open and visible: the bot keeps the game up to date
+            POST /api/claim {"action": "catchBeetle"}                     a card on manual clicked: the bot does it once, now (see claim)
             POST /api/chat/attach (a picture or video, sent as its own type)  kept for a chat message: answers {"id"}
             POST /api/chat/send {"text", "attachments": [ids], "reply_to": a message id or null}  a message for the global chat
             POST /api/sign-in {"email", "password"}                       while the bot's signed out: sign it back in (see sign_in)
@@ -1431,7 +1445,7 @@ class Handler(BaseHTTPRequestHandler):
         origin_ok = not origin or origin.split("//", 1)[-1] in NAMES
         attaching = self.path == "/api/chat/attach"  # (the file itself, sent as its own type: see chat_attach)
         if (self.path not in ("/api/switch", "/api/goal", "/api/make", "/api/hammers", "/api/pause", "/api/queue", "/api/profile", "/api/lock", "/api/sacrifice", "/api/step", "/api/looking",
-                              "/api/chat/attach", "/api/chat/send", "/api/chat/react", "/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop") or not self.local_only()
+                              "/api/claim", "/api/chat/attach", "/api/chat/send", "/api/chat/react", "/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop") or not self.local_only()
                 or (self.headers.get("Content-Type") not in CHAT_TYPES if attaching else self.headers.get("Content-Type") != "application/json") or not origin_ok):
             self.send_error(403)
             return
@@ -1458,8 +1472,28 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop"):
             self.sign_in(request)
             return
+        if self.path == "/api/claim":
+            self.claim(request)
+            return
         with bot.editing(bot.OVERRIDES_FILE):  # one change at a time, the bot's included, so none undoes another
             self.save_change(request)
+
+    def claim(self, request):
+        """POST /api/claim {"action": "catchBeetle", "claimUBC", "junkFaucet" or "beetleHunt"}: its card, on manual, was
+        clicked, so the bot does it once, within seconds (see bot.claim_now): a hunt is one hunt. Clicking again before
+        it's done changes nothing. Answers {"claims"} (see claims_view); 409 while the bot's signed out."""
+        action = request.get("action")
+        if action not in bot.CLAIMS:
+            self.send_error(400)
+            return
+        if bot.read_json(bot.STATE_FILE).get("needs_login") or not browser.COOKIES_FILE.exists():
+            self.send_error(409)
+            return
+        with bot.editing(bot.CLAIM_FILE):
+            if action not in bot.claims_waiting():
+                bot.write_json(bot.CLAIM_FILE, {**bot.read_json(bot.CLAIM_FILE), action: {"asked_at": time.time()}})
+        _status_cache["at"] = 0  # (the page's next look must show it waiting, not a second-old copy from before the click)
+        self.answer_json({"claims": claims_view()})
 
     def save_change(self, request):
         """Makes the change a POST asks for (see do_POST), and answers with the settings as they are now."""

@@ -54,10 +54,11 @@ def set_cookies(headers):
 ok(ask("/healthz", host="anything")[0] == 200, "the host's health check is answered, whatever name it uses")
 ok(ask("/", host="evil.example")[0] == 403, "the site only answers to its own names")
 status, _, page = ask("/")
-ok(status == 200 and b"Sign in with your RemiliaNET account to start your own" in page and b"you can delete it any time" in page, "anyone not signed in gets the sign-in page, worded for the website")
+ok(status == 200 and b"Sign in with your RemiliaNET account to start your own" in page and b"RemiDex keeps the sign-in RemiliaNET gives" in page
+   and b"delete" not in page, "anyone not signed in gets the sign-in page, worded for the website")
 ok(json.loads(ask("/api/sign-in")[2])["signed_in"] is False, "it says they're not signed in")
 ok(ask("/api/status")[0] == 401 and ask("/art/green")[0] == 404, "nobody's dashboard for anyone not signed in")
-ok(ask("/account")[:2][0] == 303, "nor an account page")
+ok(ask("/api/sign-out", {})[0] == 401, "nothing to sign out of")
 ok(ask("/api/sign-in", {"email": "a@b.c", "password": "x"}, origin="https://evil.example")[0] == 403, "another site can't start a sign-in")
 ok(ask("/api/sign-in", {"email": "a@b.c", "password": "x"}, origin=None)[0] == 403, "nor can anything that won't say where it's from")
 
@@ -199,17 +200,15 @@ ok(len(pb.read_json(home / "feed_us.json").get("events") or []) == 1 and not (we
 ok(len(pb.read_json(web.SHARED_DIR / "remilia_activity.json")["events"]) == 2, "and what RemiliaNET's feed shows is shared")
 ok(loop.round_wanted(home) is True and not loop.round_wanted(web.USERS_DIR / "other_one"), "news about you: your bot wants a round")
 
-# ---- your account: signing out, and deleting everything
-status, _, body = ask("/api/account", cookie=me)
-ok(status == 200 and json.loads(body)["handle"] == "tester" and ask("/account", cookie=me)[0] == 200, "the account page knows who you are")
-ok(ask("/api/account/delete", {"confirm": "other_one"}, cookie=me)[0] == 400 and home.is_dir(), "deleting needs your own handle typed")
-status, headers, _ = ask("/api/account/sign-out", {}, cookie=me)
+# ---- signing out (the dashboard's Sign out button); there's no deleting your RemiDex from the website
+ok(ask("/api/account/delete", {"confirm": "tester"}, cookie=me)[0] != 200 and ask("/account", cookie=me)[0] == 404 and home.is_dir(),
+   "no account page, and no deleting")
+ok(ask("/api/sign-out", cookie=me)[0] == 405 and ask("/api/status", cookie=me)[0] == 200, "signing out takes the button (a POST), not just a visit")
+ok(ask("/api/sign-out", {}, cookie=me, origin="https://evil.example")[0] == 403 and ask("/api/status", cookie=me)[0] == 200, "another site can't sign you out")
+status, headers, _ = ask("/api/sign-out", {}, cookie=me)
 ok(status == 200 and set_cookies(headers)["remidex"][0] == "" and ask("/api/status", cookie=me)[0] == 401 and home.is_dir(),
    "signing out ends RemiDex's sign-in here; your bot stays")
-me = sign_in("Tester")
-ok(ask("/api/account/delete", {"confirm": "~Tester"}, cookie=me)[0] == 200 and not home.exists() and ask("/api/status", cookie=me)[0] == 401,
-   "deleting stops your bot and deletes everything RemiDex kept for you")
-ok(all(v["handle"] != "tester" for v in pb.read_json(web.SESSIONS_FILE).values()), "every RemiDex sign-in you had goes too")
+ok((home / "cookies.json").exists(), "and so does its RemiliaNET sign-in")
 web.desks.stop_all()
 server.shutdown()
 ok.done()

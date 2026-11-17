@@ -100,6 +100,6 @@ _SETTINGS = {"key": None, "value": None}
 def current_settings():
     """load_settings, but read again only when what the dashboard saved has changed."""
     key = stamp(OVERRIDES_FILE)
-    if key != _SETTINGS["key"]:
+    if key != _SETTINGS["key"] or _SETTINGS["value"] is None:  # (None: not read yet, which no file at all would look like)
         _SETTINGS.update(key=key, value=load_settings())
     return _SETTINGS["value"]

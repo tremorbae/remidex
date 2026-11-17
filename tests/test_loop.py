@@ -148,6 +148,24 @@ rel = round_events(fresh_state())
 settings_module.POKES_PER_SESSION, settings_module._SETTINGS["key"] = BATCH, None
 ok(loop.SESSION_MAX <= rel[-1][1] <= loop.SESSION_MAX + GAP[1] + pb.TICK + 1, f"a round ends after {loop.SESSION_MAX // 60} minutes at most ({rel[-1][1]} s)")
 
+# ---- a card on manual clicked on the dashboard: done within seconds, in the round that's open
+clock["t"] += 3600
+claimed, start = [], clock["t"]
+support.patch(claim_now=lambda site, st: (claimed.append(clock["t"]), pb.CLAIM_FILE.unlink(missing_ok=True)))
+
+
+def click():
+    if not claimed and clock["t"] - start >= 40 and not pb.CLAIM_FILE.exists():
+        events.append(("CLICK", clock["t"]))
+        pb.CLAIM_FILE.write_text(json.dumps({"catchBeetle": {"asked_at": clock["t"]}}))
+
+
+hooks["wait"] = click
+rel = round_events(fresh_state())
+hooks["wait"] = None
+clicked = at(rel, "CLICK")
+ok(clicked and claimed and claimed[0] - start - clicked[0] <= pb.TICK + 1, f"a click is done within {pb.TICK + 1}s ({claimed[0] - start - clicked[0] if claimed and clicked else None}s)")
+
 # ---- between rounds (run_forever): Chrome rests; a failed round is tried again in a minute, then after the usual rest
 clock["t"] += 3600
 support.patch(write_json=real_write_json, TICK=30)

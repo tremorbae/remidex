@@ -38,7 +38,7 @@ from remidex.social import (
     view_feed_users,
     watch_feed,
 )
-from remidex.beetle import play_beetleboy
+from remidex.beetle import CLAIM_FILE, claim_now, claims_waiting, play_beetleboy
 from remidex.chat import CHAT_OUT_FILE, chat_waiting, send_chat, sync_chat
 from remidex.craft import beetlecraft
 from remidex.browser import Site, sign_in_from_dashboard
@@ -131,12 +131,14 @@ def sync_game(site, state):
 
 
 def wait_and_watch(site, state, seconds):
-    """Waits, making a profile change and sending a chat message from the dashboard as soon as one is asked for, and
-    keeping the game and the chat up to date for the dashboard while someone's looking at it."""
+    """Waits, making a profile change, a claim clicked on a card, and sending a chat message from the dashboard as soon as
+    one is asked for, and keeping the game and the chat up to date for the dashboard while someone's looking at it."""
     until = time.time() + seconds
     while (left := until - time.time()) > 0:
         if profile_edit_waiting():
             apply_profile_edit(site, state)
+        if claims_waiting():
+            claim_now(site, state)
         if chat_waiting():
             send_chat(site, state)
         sync_game(site, state)
@@ -218,13 +220,15 @@ def chrome_session(state, settings):
             site.require_sign_in()
             if profile_edit_waiting():
                 apply_profile_edit(site, state)
+            if claims_waiting():
+                claim_now(site, state)
             while True:
                 keep_history()
                 settings = current_settings()
                 now = time.time()
                 tasks = next_tasks(state, settings)
                 edited = changed(OVERRIDES_FILE)  # something picked on the dashboard
-                wanted = edited or someone_looking() or profile_edit_waiting() or chat_waiting()
+                wanted = edited or someone_looking() or profile_edit_waiting() or chat_waiting() or claims_waiting()
                 viewing = settings["view_profiles"] and state.get("handle") and not viewed
                 if not wanted and (now - opened >= SESSION_MAX or (min(tasks.values()) - now > CLOSE_WITHIN and not viewing)):
                     break  # the round's done: close Chrome
@@ -272,7 +276,7 @@ def hiccup(e):
 def round_wanted(home=None):
     """Whether a bot should have a round now: when something's due (a poke, a claim or hunt, a craft check, who's poked
     you, friend requests) and the rest after the last round is over (see chrome_due_in), or straight away when you pick
-    something on the dashboard, send a chat message or change your profile, or are using the dashboard. Never while a
+    something on the dashboard, click a claim, send a chat message or change your profile, or are using the dashboard. Never while a
     new sign-in is needed. News about you from the activity feed is noted for the next round. home: another bot's
     folder (the website's scheduler asks about everyone's), else this one's."""
     where = (lambda f: home / f.name) if home else (lambda f: f)  # noqa: E731
@@ -285,7 +289,7 @@ def round_wanted(home=None):
         write_json(where(STATE_FILE), state)
     settings = load_settings(where(OVERRIDES_FILE)) if home else current_settings()
     woken = [profile_edit_waiting(where(PROFILE_EDIT_FILE)), chat_waiting(where(CHAT_OUT_FILE)), someone_looking(where(LOOKING_FILE)),
-             changed(where(OVERRIDES_FILE))]  # (all asked, so none is missed)
+             changed(where(OVERRIDES_FILE)), claims_waiting(where(CLAIM_FILE))]  # (all asked, so none is missed)
     return chrome_due_in(peek_state(where(STATE_FILE)), settings) <= 0 or any(woken)
 
 

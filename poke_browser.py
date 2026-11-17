@@ -118,9 +118,14 @@ from remidex.social import (  # noqa: F401
     profile_edit_waiting,
 )
 from remidex.beetle import (  # noqa: F401
+    CLAIM_FILE,
+    CLAIM_KEPT,
+    CLAIMS,
     HUNTS_PER_CYCLE,
     HUNT_RECHARGE,
     beetle_action,
+    claim_now,
+    claims_waiting,
 )
 from remidex.craft import (  # noqa: F401
     CRAFT_NOW_FILE,

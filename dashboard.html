@@ -135,6 +135,11 @@
   .pdrop .pd-hits { max-height: 180px; overflow: auto; margin-top: 4px; }
   .pdrop .pd-hit { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; font-size: 12px; cursor: pointer; } .pdrop .pd-hit:hover { background: var(--surface-2); }
   .pdrop .pd-open { display: inline-block; margin-top: 12px; font-size: 12px; color: var(--accent); text-decoration: none; } .pdrop .pd-open:hover { text-decoration: underline; }
+  .results.pdrop { max-height: min(640px, calc(100vh - 120px)); }  /* (taller than the other menus: the whole profile fits, on most screens) */
+  /* its buttons stay in sight at the bottom, however far it's scrolled (bottom: its own padding, so they sit on the edge) */
+  .pdrop .pd-foot { position: sticky; bottom: -12px; z-index: 2; margin: 12px -14px -12px; padding: 10px 14px 12px; background: inherit; border-top: 1px dashed var(--border-light); }
+  .pdrop .pd-foot .pd-actions { margin-top: 0; } .pdrop .pd-foot .pd-msg { margin: 0 0 8px; } .pdrop .pd-foot .pd-actions + .pd-msg { margin: 8px 0 0; }
+  .pdrop .pd-msg:empty { display: none; }
   /* Notifications: what's happened since you last looked, from RemiliaNET and from the bot */
   .nav-item.notif { position: relative; min-width: 0; cursor: pointer; } .nav-item.notif:hover, .nav-item.notif.open { border-color: var(--accent); }
   .nav-item.theme { position: relative; min-width: 0; padding-right: 5px; cursor: pointer; } .nav-item.theme:hover, .nav-item.theme.open { border-color: var(--accent); }
@@ -241,7 +246,7 @@
   .key > * { position: relative; z-index: 1; }
   .key.wait::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: #808080; mix-blend-mode: saturation; opacity: .78; }
   .key.ready::after { content: ""; position: absolute; bottom: 12px; right: 14px; width: 9px; height: 9px; border-radius: 50%; background: #5df07a; box-shadow: 0 0 8px #5df07a; }
-  .key.manual.ready { cursor: pointer; }
+  .key.manual.ready { cursor: pointer; } .key.manual.ready.claiming { cursor: progress; }
   .auto { position: absolute; z-index: 2; top: 9px; right: 10px; display: flex; align-items: center; gap: 6px; padding: 3px 4px 3px 8px;
     border: 0; border-radius: 999px; background: #0000002e; color: inherit; font: 11px/1 Hei, ui-monospace, Menlo, monospace; letter-spacing: .03em;
     cursor: pointer; box-shadow: inset 0 1px 2px #0004; }
@@ -1014,6 +1019,15 @@ function key(id, at, readyText, waitText) {
   node.classList.toggle("wait", !ready); node.classList.toggle("ready", ready);
   node.querySelector(".small").textContent = ready ? readyText : waitText(span(at - now()), clock(at));
 }
+const CLAIM_CARDS = {catchBeetle: "kBeetle", claimUBC: "kCheese", junkFaucet: "kJunk", beetleHunt: "kHunt"};
+function showClaims() {  // a card clicked (on manual): "Claiming…" until the bot has done it, then why not if it couldn't (for a minute)
+  for (const [action, id] of Object.entries(CLAIM_CARDS)) {
+    const c = (data.claims || {})[action], node = $(id), hunt = action === "beetleHunt";
+    node.classList.toggle("claiming", !!c?.waiting);
+    if (c?.waiting) node.querySelector(".small").textContent = hunt ? "Hunting…" : "Claiming…";
+    else if (c?.error && node.classList.contains("ready") && now() - c.done_at < 60) node.querySelector(".small").textContent = `${hunt ? "Couldn't hunt" : "Couldn't claim it"} · ${c.error}`;
+  }
+}
 const SEASON_MARK = {Halloween: "🎃", December: "❄️"};
 const itemNote = i => (i.count == null ? "" : i.count > 0 ? ` ×${i.count.toLocaleString()}` : i.discovered ? " · none right now" : " · not discovered yet")
   + (i.can && i.count != null ? " · you can make this now" : "");
@@ -1106,14 +1120,15 @@ function render(full = true) {
     const big = $("kCheese").querySelector(".big"), streak = g.streak || 0;  // "Claim Cheese 6": the days in a row you've claimed
     if (big.dataset.streak !== String(streak)) { big.dataset.streak = streak; big.replaceChildren("Claim Cheese", streak ? el("span", {className: "streak", textContent: streak, title: `${streak}-day cheese streak`}) : ""); }
     key("kCheese", g.timers.claimUBC, on.claimUBC ? "Ready · the bot is claiming it" : "Ready · click to claim it", (s, c) => `Claim cheese in ${s} · ${c}`);
-    key("kJunk", g.timers.junkFaucet, on.junkFaucet ? "Free junk · the bot is claiming it" : "Free junk · click him 10 times", (s, c) => `Junk faucet in ${s} · ${c}`);
+    key("kJunk", g.timers.junkFaucet, on.junkFaucet ? "Free junk · the bot is claiming it" : "Free junk · click to claim it", (s, c) => `Junk faucet in ${s} · ${c}`);
     const locked = g.hunts.unlock_at && g.hunts.unlock_at > now();
     const left = locked ? 0 : Math.min(g.hunts.used >= 3 ? 3 : 3 - g.hunts.used, Math.floor(g.cheese / 20));
     if (locked) key("kHunt", g.hunts.unlock_at, "", (s, c) => `Hunt beetle in ${s} · ${c}`);
     else {
       const k = $("kHunt"); k.classList.toggle("wait", !left); k.classList.toggle("ready", !!left);
-      k.querySelector(".small").textContent = left ? `20 cheese · ${left} ready${on.beetleHunt ? " · the bot is hunting" : ""}` : "Needs 20 cheese";
+      k.querySelector(".small").textContent = left ? `20 cheese · ${left} ready · ${on.beetleHunt ? "the bot is hunting" : "click to hunt"}` : "Needs 20 cheese";
     }
+    showClaims();
     $("beetles").textContent = g.beetles; $("discovered").textContent = g.discovered; $("lvl").textContent = g.level;
     $("craftState").textContent = `Daily reset in: ${span(resetIn())}`;
     $("craftState").title = "Midnight UTC: the daily cheese comes back, and each hammer gets one smash at 0% break chance";
@@ -1526,12 +1541,21 @@ function renderProfile() {  // your picture and bio, centered, then your top 5 f
         pic, el("div", {className: "pd-who"}, el("div", {className: "pd-fn", textContent: f.name || f.handle}),
           el("div", {className: "pd-fh"}, ...tildeName(f.handle))), el("span", {className: "pd-n", textContent: `#${n + 1}`}));
     })),
-    editNote ? el("div", {className: `pd-msg ${editNote[0]}`, textContent: editNote[1]}) : "",
-    p.handle ? el("div", {className: "pd-actions"}, Object.assign(el("button", {type: "button", className: "makebtn plain", textContent: "✎ EDIT PROFILE"}), {onclick: () => { editing = true; profileEditor(); }})) : "",
     p.handle ? el("a", {className: "pd-open", href: url(p.handle), target: "_blank", rel: "noopener", textContent: "Open your profile on RemiliaNET ↗"}) : "",
-    data && data.hosted ? el("a", {className: "pd-open", href: "/account", style: "display:block", textContent: "Your RemiDex account: sign out, or delete it"}) : "",
     !p.handle ? el("div", {className: "pd-handle", textContent: "Your profile shows up here once the bot has finished its first run, in a few minutes."})
-      : p.live ? "" : el("div", {className: "pd-handle", textContent: `RemiliaNET can't be reached right now: this is from ${p.fetched_at ? when(p.fetched_at) : "earlier"}.`}));
+      : p.live ? "" : el("div", {className: "pd-handle", textContent: `RemiliaNET can't be reached right now: this is from ${p.fetched_at ? when(p.fetched_at) : "earlier"}.`}),
+    profileButtons(p));
+}
+function profileButtons(p) {  // Edit profile, and on the website Sign out: always in sight at the bottom of the menu (see .pd-foot)
+  const buttons = [];
+  if (p.handle) buttons.push(Object.assign(el("button", {type: "button", className: "makebtn plain", textContent: "✎ EDIT PROFILE"}), {onclick: () => { editing = true; profileEditor(); }}));
+  if (data && data.hosted) {
+    const out = el("button", {type: "button", className: "makebtn plain", textContent: "SIGN OUT", title: "Signs you out of RemiDex in this browser. Your bot keeps running."});
+    out.onclick = async () => { out.disabled = true; try { await post("/api/sign-out", {}); } catch {} location.replace("/"); };
+    buttons.push(out);
+  }
+  if (!buttons.length && !editNote) return "";
+  return el("div", {className: "pd-foot"}, editNote ? el("div", {className: `pd-msg ${editNote[0]}`, textContent: editNote[1]}) : "", el("div", {className: "pd-actions"}, ...buttons));
 }
 /* Editing your profile: name, bio and top 5 friends. Saving hands the change to the bot, which makes it on RemiliaNET
    with your sign-in (the dashboard has none) within seconds; the card shows how that went. */
@@ -1583,7 +1607,7 @@ function profileEditor() {
   box.replaceChildren(el("div", {className: "pd-name", textContent: "Edit your profile"}),
     el("div", {className: "pd-form"}, el("label", {}, "DISPLAY NAME"), name, el("label", {}, "BIO", count), bio,
       el("label", {}, "TOP 5 FRIENDS", el("small", {textContent: "drag to reorder"})), list, find, hits),
-    el("div", {className: "pd-actions"}, save, cancel), msg);
+    el("div", {className: "pd-foot"}, el("div", {className: "pd-actions"}, save, cancel), msg));  // (Save in sight too, however long the form)
   draw(); name.focus();
 }
 function checkProfileEdit() {  // once the bot has made the change: say how it went, and show the profile as it is now
@@ -2287,7 +2311,6 @@ $("qtabs").append(...QTABS.map(([k, zh, en]) => {
   return t;
 }));
 
-const CARTRIDGE = {catchBeetle: "beetle", beetleHunt: "beetle", claimUBC: "cheese", junkFaucet: "cheese"};
 document.addEventListener("click", async e => {
   const b = e.target.closest(".auto");
   if (b) {
@@ -2317,9 +2340,16 @@ document.addEventListener("click", async e => {
     return;
   }
   const k = e.target.closest(".key.manual.ready");
-  if (k) {
+  if (k && !k.classList.contains("claiming")) {  // a claim left to you: the bot does it now (one hunt per click)
     const action = k.querySelector(".auto")?.dataset.action;
-    window.open(`https://www.remilia.net/home?cartridge=${CARTRIDGE[action] || "beetle"}`, "_blank", "noopener");
+    if (!action) return;
+    data.claims = {...data.claims, [action]: {waiting: true}}; render(false);
+    try {
+      data.claims = (await post("/api/claim", {action})).claims;
+    } catch (err) {
+      data.claims = {...data.claims, [action]: {done_at: now(), error: err.message === "HTTP 409" ? "sign in first" : `RemiDex didn't answer (${err.message})`}};
+    }
+    render(false);
   }
 }, true);
 

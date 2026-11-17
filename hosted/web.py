@@ -232,7 +232,7 @@ class Scheduler(threading.Thread):
             return home in self.rounds
 
     def hold(self, home, held=True):
-        """No round starts for home while it's held (a sign-in being brought in, an account being deleted)."""
+        """No round starts for home while it's held (a new sign-in being brought in)."""
         with self.lock:
             (self.held.add if held else self.held.discard)(home)
 
@@ -361,15 +361,13 @@ def housekeeping():
             log(f"Website: housekeeping: {type(e).__name__}: {e}")
 
 
-def site_page(name):
-    """The sign-in page (signin.html, worded for the website), or the account page."""
-    if name == "account":
-        return ACCOUNT_PAGE.encode()
+def sign_in_page():
+    """The sign-in page (signin.html), worded for the website."""
     page = (ROOT / "signin.html").read_text()
     return (page.replace("Sign in with your RemiliaNET account to start the bot.",
                          "Plays BeetleBoy and BeetleCraft on RemiliaNET for you. Sign in with your RemiliaNET account to start your own.")
             .replace("Your password goes straight to RemiliaNET. RemiDex doesn't save it.",
-                     "Your password goes straight to RemiliaNET and isn't saved. RemiDex keeps the sign-in RemiliaNET gives, to run your bot: you can delete it any time. Not made by Remilia.")
+                     "Your password goes straight to RemiliaNET and isn't saved. RemiDex keeps the sign-in RemiliaNET gives, to run your bot. Not made by Remilia.")
             .replace("RemiDex isn't answering. Is it running?", "RemiDex isn't answering. Try again in a minute.")).encode()
 
 
@@ -464,17 +462,15 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/logo.svg", "/icon.svg") or path.startswith("/public/"):
             return self.asset(path)
         if path == "/sign-in":
-            return self.go_to("/") if signed_in(home) else self.answer(200, site_page("sign-in"), "text/html; charset=utf-8")
+            return self.go_to("/") if signed_in(home) else self.answer(200, sign_in_page(), "text/html; charset=utf-8")
         if path.startswith("/api/sign-in"):
             return self.sign_in(path, home)
-        if path == "/account":
-            return self.answer(200, site_page("account"), "text/html; charset=utf-8") if home else self.go_to("/")
-        if path.startswith("/api/account"):
-            return self.account(path, token, home)
+        if path == "/api/sign-out":
+            return self.sign_out(token, home)
         if home:
             return self.relay(home)
         if path in ("/", "/index.html"):
-            return self.answer(200, site_page("sign-in"), "text/html; charset=utf-8")
+            return self.answer(200, sign_in_page(), "text/html; charset=utf-8")
         return self.answer(401 if path.startswith("/api/") else 404, b"Sign in first")
 
     def asset(self, path):
@@ -558,38 +554,16 @@ class Handler(BaseHTTPRequestHandler):
             said = {}
         return answer.status, said if isinstance(said, dict) else {}
 
-    # ---- your account
-    def account(self, path, token, home):
-        """POST /api/account/sign-out: signs you out of RemiDex here (your bot carries on). POST /api/account/delete
-        {"confirm": your handle}: stops your bot and deletes everything RemiDex keeps for you, your sign-in included.
-        GET /api/account: who you are."""
+    # ---- signing out
+    def sign_out(self, token, home):
+        """POST /api/sign-out (the dashboard's Sign out button): ends RemiDex's sign-in in this browser. The person's bot
+        carries on, with what they've switched on."""
         if home is None:
             return self.answer(401, b"Sign in first")
-        if self.command == "GET" and path == "/api/account":
-            return self.answer_json({"handle": home.name, "address": os.environ["REMIDEX_ADDRESS"]})
         if self.command != "POST":
             return self.answer(405, b"Not allowed")
-        if path == "/api/account/sign-out":
-            sessions.drop(token=token)
-            return self.answer_json({"ok": True}, cookies=[self.cookie(COOKIE, "", 0)])
-        if path == "/api/account/delete":
-            try:
-                asked = json.loads(self.body() or b"{}")
-            except ValueError:
-                asked = {}
-            if not isinstance(asked, dict) or str(asked.get("confirm") or "").strip().lstrip("~").lower() != home.name:
-                return self.answer(400, b"Type your handle to confirm")
-            scheduler.hold(home)
-            try:
-                scheduler.stop(home)
-                desks.stop(home)
-                shutil.rmtree(home, ignore_errors=True)
-            finally:
-                scheduler.hold(home, False)
-            sessions.drop(handle=home.name)
-            log(f"Website: ~{home.name} deleted their RemiDex.")
-            return self.answer_json({"ok": True}, cookies=[self.cookie(COOKIE, "", 0)])
-        return self.answer(404, b"Not found")
+        sessions.drop(token=token)
+        return self.answer_json({"ok": True}, cookies=[self.cookie(COOKIE, "", 0)])
 
     # ---- your dashboard
     def relay(self, home):
@@ -630,56 +604,6 @@ class Handler(BaseHTTPRequestHandler):
             pass  # (the page went away, or the dashboard did: the browser asks again)
         finally:
             desks.using(home, -1)
-
-
-ACCOUNT_PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your RemiDex account</title><link rel="icon" href="/icon.svg" type="image/svg+xml">
-<style>
-  @font-face { font-family: Hei; src: url(/public/Hei.ttf) format("truetype"); font-display: swap; }
-  :root { color-scheme: light dark; --bg: #e9e9e9; --card: #e8f2fa; --text: #222; --text-2: #666; --accent: #3b82c4; --line: #c9d7e3; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #1d1d1d; --card: #2a2f35; --text: #e6e6e6; --text-2: #a0a0a0; --line: #3c4651; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); color: var(--text); font: 14px/1.5 Hei, ui-monospace, Menlo, monospace; }
-  main { width: min(440px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 22px; }
-  img { display: block; width: 180px; margin: 0 auto 10px; } h1 { margin: 0 0 4px; font-size: 18px; text-align: center; }
-  p { margin: 8px 0; color: var(--text-2); font-size: 13px; } .who { text-align: center; color: var(--text); }
-  section { border-top: 1px dashed var(--line); margin-top: 16px; padding-top: 12px; }
-  button { height: 40px; width: 100%; border: 0; border-radius: 4px; background: var(--accent); color: #fff; font: inherit; font-weight: bold; cursor: pointer; }
-  button.danger { background: #c03a3a; } button:disabled { opacity: .5; cursor: default; }
-  input { width: 100%; height: 38px; margin: 6px 0 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: inherit; font: inherit; }
-  a { color: var(--accent); } .note { min-height: 1.5em; color: #c03a3a; }
-</style></head><body><main>
-  <img src="/logo.svg" alt="RemiDex">
-  <h1>Your RemiDex account</h1>
-  <p class="who" id="who">…</p>
-  <p style="text-align:center"><a href="/">Back to your dashboard</a></p>
-  <section>
-    <p>Signing out only ends RemiDex's sign-in on this browser. Your bot carries on, with what you've switched on.</p>
-    <button id="out">SIGN OUT</button>
-  </section>
-  <section>
-    <p>Deleting stops your bot and deletes everything RemiDex keeps for you: your RemiliaNET sign-in, switches, history and
-       settings. Your RemiliaNET account isn't touched. What your crafts taught about recipes stays shared, without your name.</p>
-    <label>Type your handle to confirm<input id="confirm" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
-    <button class="danger" id="delete">DELETE MY REMIDEX</button>
-    <p class="note" id="note" role="status"></p>
-  </section>
-</main>
-<script>
-const $ = id => document.getElementById(id);
-const post = (path, body) => fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
-fetch("/api/account", {cache: "no-store"}).then(r => r.ok ? r.json() : Promise.reject()).then(a => { $("who").textContent = `Signed in as ~${a.handle}`; })
-  .catch(() => location.replace("/"));
-$("out").onclick = async () => { $("out").disabled = true; await post("/api/account/sign-out").catch(() => {}); location.replace("/"); };
-$("delete").onclick = async () => {
-  $("delete").disabled = true; $("note").textContent = "";
-  const r = await post("/api/account/delete", {confirm: $("confirm").value}).catch(() => null);
-  if (r && r.ok) { location.replace("/"); return; }
-  $("note").textContent = r && r.status === 400 ? "That isn't your handle." : "That didn't work. Try again.";
-  $("delete").disabled = false;
-};
-</script></body></html>"""
 
 
 def drop_root():
