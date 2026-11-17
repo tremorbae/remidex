@@ -47,7 +47,7 @@ class Site:
 
 state = {"craft_off": {first: time.time() + pb.FOR_GOOD}, "handle": "me"}
 settings = {"goal": None, "make": None, "hammer_order": pb.HAMMERS, "hammer_limits": {h: 25 for h in pb.HAMMERS}}
-pb.beetlecraft(Site(), state, False, settings)
+pb.beetlecraft(Site(), state, settings)
 ok(first in (pb.read_json(pb.REMOVED_FILE).get("recipes") or {}), "an old switched-off-for-good recipe is removed at the next check")
 ok(any("removed a recipe" in l for l in logs), "and the log says so")
 ok.done()

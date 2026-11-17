@@ -15,7 +15,6 @@ from remidex.core import (
     DASH_DIR,
     DELAY,
     FEED_US_FILE,
-    HOSTED,
     ICONS_PER_RUN,
     PEOPLE_PICS,
     SHARED_DIR,
@@ -32,7 +31,6 @@ from remidex.core import (
     today,
     write_json,
 )
-from remidex.settings import alert
 from remidex.state import read_notes, save_picture
 
 
@@ -103,10 +101,6 @@ def cache_profile_views(site, state):
     status, profile = look_up(site, state["handle"]) if state.get("handle") else (0, None)
     user = (profile or {}).get("user") if status == 200 else None
     if isinstance(user, dict):  # your own achievements, and which you picked to show on your profile, in that order
-        before = {a.get("id") for a in read_json(MY_ACHIEVEMENTS_FILE).get("all") or [] if isinstance(a, dict)} if MY_ACHIEVEMENTS_FILE.exists() else None
-        for a in user.get("allAchievements") or []:
-            if before is not None and isinstance(a, dict) and a.get("id") not in before:  # new since last time (not the first time it looks)
-                alert("achievement", "Achievement unlocked", f"{a.get('title')}: {a.get('description')}", once=f"achievement {a.get('id')}")
         write_json(MY_ACHIEVEMENTS_FILE, {"all": user.get("allAchievements") or [], "shown": [as_dict(a).get("id") for a in user.get("achievementsDisplayed") or []],
                                           "friends": user.get("friendCount"), "fetched_at": time.time()})
         top = [f for f in user.get("friendsDisplayed") or [] if isinstance(f, dict) and f.get("userHandle")][:5]
@@ -312,7 +306,7 @@ def befriend(site, handle, state, looked=None):
     return f"friend request failed ({http_error(status, body)})"
 
 
-def poke_next(site, state, dry_run, settings):
+def poke_next(site, state, settings):
     """Pokes one person: the friend whose cooldown ended longest ago, or else someone else who is due
     (or, with friends_first off, anyone due at random).
     Returns when the poke was sent (with pokes on manual: the friend request), or None if nobody was poked."""
@@ -335,8 +329,6 @@ def poke_next(site, state, dry_run, settings):
     write_json(STATE_FILE, state)
 
     counts = today(state)
-    if dry_run:
-        print(f"Today: {counts['pokes']} pokes, {counts['friend_requests']} friend requests.")
 
     def due(people):
         """Who in people can be poked now, longest-waiting first (ties, like never-poked, in random order)."""
@@ -345,17 +337,12 @@ def poke_next(site, state, dry_run, settings):
 
     not_others = set(friends) | {handle}
     others = set(read_json(EVERYONE_FILE).get("known", [])) - not_others
-    if not dry_run and (settings["pokes"] or settings["friend_requests"]) and len(due(others)) < DISCOVER_BELOW:  # nothing to find them for otherwise
+    if (settings["pokes"] or settings["friend_requests"]) and len(due(others)) < DISCOVER_BELOW:  # nothing to find them for otherwise
         others = discover(site, state) - not_others
     friends_due, others_due = due(friends), due(others)
     queue = friends_due + others_due
     if not settings["friends_first"]:
         random.shuffle(queue)
-    if dry_run:
-        print(f"~{handle}: {len(friends_due)} of {len(friends)} friends and {len(others_due)} of {len(others)} others due for a poke.")
-        if queue:
-            print(f"Next poke: ~{queue[0]}" if settings["pokes"] else "Pokes are on manual.")
-        return
     if not settings["pokes"]:
         return ask_next(site, state, others_due, counts) if settings["friend_requests"] else None
 
@@ -452,13 +439,10 @@ _PEOPLE = {"at": 0.0, "files": {}}
 
 
 def news_files():
-    """Where news about each bot's person goes: {their RemiliaNET handle: their FEED_US_FILE}. On a Mac, just yours; on
-    the website, everyone's. Looked at again every minute (someone new signs up, say)."""
+    """Where news about each bot's person goes: {their RemiliaNET handle: their FEED_US_FILE}, for everyone. Looked at
+    again every minute (someone new signs up, say)."""
     if time.time() - _PEOPLE["at"] > 60:
-        if HOSTED:
-            found = {read_json(home / STATE_FILE.name).get("handle"): home / FEED_US_FILE.name for home in homes()}
-        else:
-            found = {read_json(STATE_FILE).get("handle"): FEED_US_FILE}
+        found = {read_json(home / STATE_FILE.name).get("handle"): home / FEED_US_FILE.name for home in homes()}
         _PEOPLE.update(at=time.time(), files={h: f for h, f in found.items() if isinstance(h, str) and h})
     return _PEOPLE["files"]
 
@@ -520,16 +504,13 @@ def view_profile(site, handle):
     return status
 
 
-def view_feed_users(site, state, dry_run, until=None):
+def view_feed_users(site, state, until=None):
     """Views everyone the feed has shown since their last view, newest first; you and your friends are skipped.
     Stops at until (a time), so views fill the wait before the next poke without delaying it."""
     already = store.viewed_lately()
     skip = set(state.get("friends") or []) | {state.get("handle")}
     todo = [h for h in store.feed_recent() if h not in skip and h not in already]  # newest first
     if not todo:
-        return 0
-    if dry_run:
-        print("Would view: " + ", ".join(f"~{h}" for h in todo))
         return 0
 
     viewed = 0

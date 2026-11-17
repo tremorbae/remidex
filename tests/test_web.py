@@ -122,7 +122,7 @@ status, headers, page = ask("/", cookie=me)
 ok(status == 200 and b"<title>RemiDex</title>" in page, f"signed in: the dashboard ({status})")
 status, _, body = ask("/api/status", cookie=me)
 data = json.loads(body) if status == 200 else {}
-ok(data.get("hosted") is True and data.get("jobs") == {"bot": False}, f"it knows it's on the website (the scheduler isn't running in this test: {data.get('jobs')})")
+ok(data.get("jobs") == {"bot": False}, f"the scheduler isn't running in this test, and the dashboard can tell ({data.get('jobs')})")
 ok(ask("/api/switch", {"action": "pokes", "auto": True}, cookie=me)[0] == 200 and pb.read_json(home / "overrides.json")["social"]["pokes"] is True,
    "a switch saved from their page is saved for their bot")
 ok(ask("/api/switch", {"action": "pokes", "auto": False}, cookie=me, origin="https://evil.example")[0] == 403, "but never from another site")

@@ -12,7 +12,7 @@ from remidex.beetle import HUNT_GAP  # noqa: E402
 from remidex.core import APP_DIR, COOKIES_FILE  # noqa: E402
 
 logs = []
-support.patch(log=logs.append, alert=lambda *a, **k: None)
+support.patch(log=logs.append)
 BASE = {"level": 5, "xp": 100, "inventory": {"cheese": 10}, "cooldowns": {}, "beetleHuntsUsed": 0, "lastBeetleHuntDate": 0}
 
 
@@ -113,10 +113,9 @@ far = time.time() + 10 ** 6
 pb.write_json(pb.STATE_FILE, {"next_slot_at": far, "beetle_check_at": far, "craft_check_at": far, "views_check_at": far, "accept_check_at": far, "rest_until": far})
 pb.write_json(COOKIES_FILE, {"cookies": []})
 pb.CLAIM_FILE.unlink()
-ok(loop.round_wanted() is False and loop.round_wanted(APP_DIR) is False, "resting, nothing due: no round")
+ok(loop.round_wanted(APP_DIR) is False, "resting, nothing due: no round")
 click("junkFaucet")
-ok(loop.round_wanted() is True, "a click: a round now")
-ok(loop.round_wanted(APP_DIR) is True, "the website's scheduler sees it too (it asks about each person's folder)")
+ok(loop.round_wanted(APP_DIR) is True, "a click: a round now")
 
 # ---- the dashboard: POST /api/claim
 ask = support.serve(dashboard)

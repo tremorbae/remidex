@@ -87,26 +87,26 @@ settings = {"junk_cubes": False, "goal": None, "goal_again": False, "goal_paused
             "hammer_order": ["hammer_t1"], "hammer_limits": {"hammer_t1": 95}, "max_break_chance": 25, "hammer_timing": False}
 proven(3, 0)
 site, state = Site("UNLUCKY_ROLL"), {"handle": "me"}
-pb.beetlecraft(site, state, False, settings)
+pb.beetlecraft(site, state, settings)
 ok(site.sent[:2] == ["purple", "purple"], f"a proven low-odds smash sacrifices the Purple Beetles first ({site.sent})")
 ok(site.sent[2:] == ["green", "green"], "then Green ones")
 ok(any("sacrificing a Purple Beetle" in l and "the Purple Beetle is gone" in l for l in logs), "and the log says which went")
 proven(0, 0)
 site, state = Site("UNLUCKY_ROLL", greens=2), {"handle": "me"}
-pb.beetlecraft(site, state, False, settings)
+pb.beetlecraft(site, state, settings)
 ok(site.sent == ["green", "green"], f"a new recipe isn't proven by 2 tries: out of Green ones, it waits rather than spend a Purple one ({site.sent})")
 proven(0, 0)
 site, state = Site("UNLUCKY_ROLL", greens=3), {"handle": "me"}
-pb.beetlecraft(site, state, False, settings)
+pb.beetlecraft(site, state, settings)
 ok(site.sent[:3] == ["green", "green", "green"], f"a new recipe: its first 3 tries are Green ({site.sent})")
 ok(site.sent[3:] == ["purple", "purple"], "3 failures prove it low odds: then Purple ones")
 proven(3, 0)
 site, state, logs[:] = Site("UNLUCKY_ROLL", status=400), {"handle": "me"}, []
-pb.beetlecraft(site, state, False, settings)
+pb.beetlecraft(site, state, settings)
 ok(site.sent == ["purple"] and state["craft_off"].get(pb.PURPLE_OFF), f"the game refuses a Purple Beetle: switched off for a day ({site.sent})")
 site.status = 200
 state["craft_check_at"] = 0
-pb.beetlecraft(site, state, False, settings)
+pb.beetlecraft(site, state, settings)
 ok(site.sent[1:3] == ["green", "green"], f"and crafting carries on with Green ones ({site.sent})")
 
 # ---- the plan keeps one of the beetle its smashes sacrifice: with Purple, the last Green Beetle can go in a recipe

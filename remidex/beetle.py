@@ -5,7 +5,7 @@ import random
 import time
 
 from remidex.core import APP_DIR, BEETLE_RETRY, DELAY, GAME_FILE, STATE_FILE, editing, http_error, log, read_json, write_json
-from remidex.state import note_level, save_game, streak_watch
+from remidex.state import note_level, save_game
 
 
 HUNT_COST = 20  # cheese per hunt
@@ -90,14 +90,14 @@ def next_beetle_check(game, retry_at, enabled):
     return min([BEETLE_CHECK_MAX, *waits]) if waits else BEETLE_CHECK_MAX
 
 
-def play_beetleboy(site, state, dry_run, settings):
+def play_beetleboy(site, state, settings):
     """Claims the daily cheese, the free beetle and the Cheeseman's junk whenever each is ready, then spends cheese
     on every hunt the game allows. Each part can be set to manual on the dashboard. Only looks at
     the game when something could be due (and, with everything on manual, now and then to keep the dashboard current)."""
     enabled = [a for a, on in settings["beetleboy"].items() if on]
     switched = state.get("beetle_switches") != enabled  # a switch was flipped: look now rather than at the planned time
     state["beetle_switches"] = enabled
-    if not dry_run and not switched and time.time() < state.get("beetle_check_at", 0):
+    if not switched and time.time() < state.get("beetle_check_at", 0):
         return
     status, game = site.api("GET", "/api/beetle/user")
     if status != 200 or not isinstance(game, dict):
@@ -115,14 +115,6 @@ def play_beetleboy(site, state, dry_run, settings):
         return action in enabled and not (game.get("cooldowns") or {}).get(action) and retry_at.get(action, 0) <= time.time()
 
     claims = [a for a in ("claimUBC", "catchBeetle", "junkFaucet") if ready(a)]  # cheese first, so hunts can spend it
-    if dry_run:
-        names = {"claimUBC": "daily cheese", "catchBeetle": "free beetle", "junkFaucet": "Cheeseman junk"}
-        hunts = hunts_left(game) if ready("beetleHunt") else 0
-        cheese = (game.get("inventory") or {}).get("cheese", 0)
-        print(f"BeetleBoy: would claim {', '.join(names[a] for a in claims) or 'nothing'}; "
-              f"{hunts} hunts available ({cheese} cheese).")
-        return
-
     for action in claims:
         game, error = claim(site, action, game)
         if error:
@@ -149,7 +141,6 @@ def play_beetleboy(site, state, dry_run, settings):
 
     state["beetle_check_at"] = time.time() + next_beetle_check(game, retry_at, enabled)
     write_json(STATE_FILE, state)
-    streak_watch(game)
     save_game(game)
 
 

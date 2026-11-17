@@ -35,9 +35,13 @@ def offline():
 
 
 def load():
-    """The bot (poke_browser), offline (see offline). It keeps everything in a new, empty folder (REMIDEX_HOME), so a test
-    never reads or changes what RemiDex has saved on this computer, and gives the same result on any computer."""
-    os.environ["REMIDEX_HOME"] = tempfile.mkdtemp()  # (before the bot is loaded: it's where it keeps things)
+    """One person's bot (poke_browser), offline (see offline). Its disk is a new, empty folder (REMIDEX_DATA), with the
+    person's own folder in it (REMIDEX_HOME), so a test never reads or changes anything saved on this computer, and gives
+    the same result on any computer."""
+    data = tempfile.mkdtemp()  # (before the bot is loaded: it's where it keeps things)
+    home = os.path.join(data, "users", "tester")
+    os.makedirs(home)  # (as the website makes each person's folder when they sign in)
+    os.environ.update(REMIDEX_DATA=data, REMIDEX_HOME=home)
     offline()
     import poke_browser
     return poke_browser

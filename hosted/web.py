@@ -362,13 +362,8 @@ def housekeeping():
 
 
 def sign_in_page():
-    """The sign-in page (signin.html), worded for the website."""
-    page = (ROOT / "signin.html").read_text()
-    return (page.replace("Sign in with your RemiliaNET account to start the bot.",
-                         "Plays BeetleBoy and BeetleCraft on RemiliaNET for you. Sign in with your RemiliaNET account to start your own.")
-            .replace("Your password goes straight to RemiliaNET. RemiDex doesn't save it.",
-                     "Your password goes straight to RemiliaNET and isn't saved. RemiDex keeps the sign-in RemiliaNET gives, to run your bot. Not made by Remilia.")
-            .replace("RemiDex isn't answering. Is it running?", "RemiDex isn't answering. Try again in a minute.")).encode()
+    """The sign-in page (signin.html)."""
+    return (ROOT / "signin.html").read_bytes()
 
 
 class Handler(BaseHTTPRequestHandler):

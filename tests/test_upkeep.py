@@ -1,6 +1,6 @@
 """The app keeping itself in good shape: the bot's own profile views don't crowd the feed or the log, hiccups it gets over
 are calm notes, the log is trimmed without counting anything twice, sure crafts go before long shots, the bot's
-browser is its own (not your Google Chrome) and draws calmly, and RemiDex's logo is made from RemiliaNET's whatever
+browser is Playwright's own and draws calmly, and RemiDex's logo is made from RemiliaNET's whatever
 size the site draws it at (temp files, fakes; nothing real is run)."""
 import tempfile
 import time
@@ -20,7 +20,7 @@ support.patch(log=logs.append, CRAFT_STATS_FILE=tmp / "stats.json", REMOVED_FILE
 day = time.strftime("%Y-%m-%d")
 dashboard.LOG_FILE = tmp / "feed.log"
 dashboard.LOG_FILE.write_text("".join(f"{day} 10:{n:02d}:00 Profile views from the activity feed: 1.\n" for n in range(50))
-                              + f"{day} 11:00:00 ~a (friend): poked.\n{day} 11:01:00 Chrome: it was closed from outside (usually the Mac sleeping or waking); opening it again in a minute.\n")
+                              + f"{day} 11:00:00 ~a (friend): poked.\n{day} 11:01:00 Browser: it closed unexpectedly; opening it again soon.\n")
 lines = dashboard.log_lines()
 ok([t for _, t in lines][:1] == ["~a (friend): poked."] and len(lines) == 2, f"profile views left out ({len(lines)} lines)")
 entries = dashboard.log_entries(lines, set())
@@ -42,7 +42,7 @@ ok(len(said) == 1 and ": 61 since" in said[0], f"after an hour: one line with th
 social.time.time = real_time
 
 # ---- hiccups and real errors
-ok(loop.hiccup(Exception("Page.wait_for_timeout: Target page, context or browser has been closed")).startswith("Chrome:"), "Chrome closed: a calm note")
+ok(loop.hiccup(Exception("Page.wait_for_timeout: Target page, context or browser has been closed")).startswith("Browser:"), "the browser closing: a calm note")
 ok(loop.hiccup(RuntimeError("couldn't check the sign-in (HTTP 0)")).startswith("Network:"), "no connection: a calm note")
 ok(loop.hiccup(RuntimeError("couldn't check the sign-in (HTTP 500)")) is None, "a real error stays an error")
 
@@ -77,7 +77,7 @@ order = [c[0] for c in pb.craft_candidates(lotus, True, settings, fallback=False
 ok(moss in order and all(pb.long_shot(pb.recipe_named(label)) for label in order[order.index(moss):]), f"the 1-in-40 Moss smash after every sure step ({order})")
 ok(pb.next_craft(lotus, True, settings, {})[0] != moss, "so the Green Beetles go to a sure step first")
 
-# ---- the bot's browser: Playwright's own headless Chromium (not your Google Chrome), drawing calmly
+# ---- the bot's browser: Playwright's own headless Chromium, drawing calmly
 from remidex import browser  # noqa: E402
 launched, scripts = [], []
 
@@ -104,15 +104,12 @@ fake = type("Playwright", (), {"chromium": type("Chromium", (), {"launch_persist
 support.patch(PROFILE_DIR=tmp / "profile", COOKIES_FILE=tmp / "cookies.json")
 browser.Site(fake)
 folder, how = launched[-1]
-ok("channel" not in how and how.get("headless") is True, f"Playwright's own headless Chromium, not your Google Chrome ({sorted(how)})")
-ok(folder == tmp / "profile" and 'PROFILE_DIR = APP_DIR / "browser-profile"' in Path(browser.__file__).read_text(), "in its own profile folder, not the one your Google Chrome made")
+ok("channel" not in how and how.get("headless") is True, f"Playwright's own headless Chromium ({sorted(how)})")
+ok(folder == tmp / "profile" and 'PROFILE_DIR = APP_DIR / "browser-profile"' in Path(browser.__file__).read_text(), "in its own profile folder")
 ok(scripts == [browser.CALM] and "requestAnimationFrame" in browser.CALM, "the page draws once a second, not 60 times")
 browser.Site(fake, calm=False)
 ok(scripts == [browser.CALM], "signing in leaves RemiliaNET's pages as they are")
-mac = (support.ROOT / "install_browser.sh").read_text()
-ok("Google Chrome.app" not in mac and "playwright install --only-shell chromium" in mac, "the Mac installer gets that Chromium, and doesn't need Google Chrome")
-ok(mac.index('"$LAUNCHCTL" enable') < mac.index('"$LAUNCHCTL" bootstrap'), "the installer switches its jobs back on before starting them")
-ok(all(f'"RemiDex {n}"' in mac for n in ("bot", "feed watcher", "dashboard")), "each job has a clear name in Login Items, not \"python\"")
+ok("playwright install --with-deps --only-shell chromium" in (support.ROOT / "Dockerfile").read_text(), "the server gets that Chromium, and only that browser")
 
 # ---- RemiDex's logo: the flower from RemiliaNET's own logo, whatever size the site draws that at (made-up logos)
 import xml.dom.minidom  # noqa: E402

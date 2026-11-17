@@ -113,7 +113,7 @@ class Site:
 logs.clear()
 settings = {"junk_cubes": True, "goal": None, "goal_again": False, "goal_paused": False, "goal_set_at": None, "make": None, "locked": [],
             "hammer_order": pb.HAMMERS, "hammer_limits": {h: 25 for h in pb.HAMMERS}, "max_break_chance": 25, "hammer_timing": False}
-pb.beetlecraft(Site(), {"handle": "me"}, False, settings)
+pb.beetlecraft(Site(), {"handle": "me"}, settings)
 crafts = [m for m in logs if m.startswith("BeetleCraft")]
 ok(len(sent) == 1 and crafts[0].startswith("BeetleCraft: Assemble") and crafts[-1] == says.SCREEN + "YOU ASSEMBLED A Junk Cube FROM 2 Smiley PebbleS!", f"the bot's craft is followed by the screen's words ({crafts})")
 shown = dashboard.log_entries([("2026-10-18 21:00:00", m) for m in crafts], set())

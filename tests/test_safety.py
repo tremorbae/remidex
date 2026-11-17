@@ -61,13 +61,14 @@ ok(pb.read_json(pb.PROFILE_EDIT_FILE).get("bio") == "hi", "the edit is saved for
 ok(pb.read_json(pb.OVERRIDES_FILE) == {"make_queue": []}, "and what the bot changed meanwhile stays")
 dashboard.profile_request = original
 
-# ---- the dashboard answers to its names (remidex.localhost too), and to nothing else, so other sites can't reach it
+# ---- the dashboard answers to this server's own names (the website asks it as 127.0.0.1), and to nothing else
 asked = lambda host, path, origin=None, body=None: ask(path, body, host=host, origin=origin)[0]  # noqa: E731
 port = dashboard.PORT
-ok(asked(f"remidex.localhost:{port}", "/favicon.ico") in (200, 404) and asked(f"localhost:{port}", "/favicon.ico") in (200, 404), "remidex.localhost and localhost both reach it")
-ok(asked(f"evil.example:{port}", "/favicon.ico") == 403 and asked(f"remidex.localhost.evil.example:{port}", "/favicon.ico") == 403, "any other name is refused")
-ok(asked(f"remidex.localhost:{port}", "/api/looking", f"http://remidex.localhost:{port}", b"{}") == 204, "a change from the page at remidex.localhost goes through")
-ok(asked(f"remidex.localhost:{port}", "/api/looking", "http://evil.example", b"{}") == 403, "one from another site doesn't")
+ok(asked(f"127.0.0.1:{port}", "/favicon.ico") in (200, 404) and asked(f"localhost:{port}", "/favicon.ico") in (200, 404), "127.0.0.1 and localhost both reach it")
+ok(asked(f"evil.example:{port}", "/favicon.ico") == 403 and asked(f"remidex.localhost:{port}", "/favicon.ico") == 403
+   and asked(f"127.0.0.1.evil.example:{port}", "/favicon.ico") == 403, "any other name is refused")
+ok(asked(f"127.0.0.1:{port}", "/api/looking", f"http://127.0.0.1:{port}", b"{}") == 204, "a change from its own page goes through")
+ok(asked(f"127.0.0.1:{port}", "/api/looking", "http://evil.example", b"{}") == 403, "one from another site doesn't")
 
 # ---- the bot (its own process) moves the queue on while you switch an item off: both changes stay
 bot_side = subprocess.Popen([sys.executable, "-c", f"""import sys, time
@@ -146,7 +147,7 @@ for answer in ("UNLUCKY_ROLL", "SUCCESS", "INVALID_RECIPE", "ALREADY_OWNED"):
                 "make": {"keys": ["moss"], "recipe": None, "set_at": 1.0, "start": 0, "paused": False},
                 "hammer_order": ["hammer_t1"], "hammer_limits": {"hammer_t1": 95}, "max_break_chance": 25, "hammer_timing": False}
     try:
-        pb.beetlecraft(site, state, False, settings)
+        pb.beetlecraft(site, state, settings)
         crashed = None
     except Exception as e:  # what used to happen to every failed smash: note_craft was called the wrong way
         crashed = e
@@ -186,7 +187,7 @@ class Watched(CraftSite):  # what the craft screen's little screen is told, each
 for site, paused in ((CraftSite("UNLUCKY_ROLL"), False), (PausedSite("UNLUCKY_ROLL"), True), (CountdownSite("UNLUCKY_ROLL"), True)):
     pb.write_json(pb.GAME_FILE, {}); pb.write_json(pb.OVERRIDES_FILE, {})
     state = {"handle": "me"}
-    pb.beetlecraft(site, state, False, settings)
+    pb.beetlecraft(site, state, settings)
     if isinstance(site, CountdownSite):
         ok(site.crafts == 0 and site.waits == 1 and state["craft_check_at"] == 0, f"paused in the countdown: that craft never goes ({site.crafts} crafts)")
     elif paused:
@@ -197,11 +198,11 @@ for site, paused in ((CraftSite("UNLUCKY_ROLL"), False), (PausedSite("UNLUCKY_RO
 
 pb.write_json(pb.GAME_FILE, {}); pb.write_json(pb.OVERRIDES_FILE, {})
 site = Watched("UNLUCKY_ROLL")
-pb.beetlecraft(site, {"handle": "me"}, False, settings)
+pb.beetlecraft(site, {"handle": "me"}, settings)
 ok(site.waits == 5 * site.crafts and site.told == (["next"] * 5 + ["crafting"]) * site.crafts,
    f"a 5-second countdown before each craft, then crafting ({site.crafts} crafts, {site.waits} seconds)")
 
-# ---- someone's first sign-in on this Mac: every switch on the dashboard starts off; nobody who's been here is changed
+# ---- someone's first sign-in: every switch on the dashboard starts off; nobody who's been here is changed
 support.patch(COOKIES_FILE=tmp / "new_cookies.json", STATE_FILE=tmp / "new_state.json", OVERRIDES_FILE=tmp / "new_overrides.json")
 ok(browser.first_sign_in_defaults(), "a first sign-in sets the defaults")
 fresh = pb.load_settings()
@@ -209,5 +210,5 @@ ok(not any(fresh["beetleboy"].values()) and not any(fresh[k] for k in ("pokes", 
    f"claims, hunts, pokes, friend requests, profile views, junk cubes and the Tin Hammer all start off ({fresh['beetleboy']})")
 ok(not browser.first_sign_in_defaults() and pb.read_json(pb.OVERRIDES_FILE) and not fresh["beetleboy"]["beetleHunt"], "someone who's been here keeps what they set")
 support.patch(OVERRIDES_FILE=tmp / "nothing_picked.json")
-ok(all(pb.load_settings()[k] for k in ("pokes", "view_profiles", "tin_hammer")), "with nothing picked (an install from before), they stay on")
+ok(all(pb.load_settings()[k] for k in ("pokes", "view_profiles", "tin_hammer")), "with nothing picked (someone from before the switches started off), they stay on")
 ok.done()

@@ -1,17 +1,16 @@
-"""Paths, timings and constants, plus the small helpers every other part uses: log, notify, read_json, write_json."""
+"""Paths, timings and constants, plus the small helpers every other part uses: log, read_json, write_json."""
 
 import contextlib
 import fcntl
 import json
 import os
-import subprocess
-import sys
 import threading
 import time
 from datetime import datetime
-from pathlib import Path
 
-from remidex.places import APP_DIR, HOSTED, LOG_FILE, SHARED_DIR, VENV_PYTHON, homes  # noqa: F401 (other parts import these from here)
+from playwright.sync_api import Error as PlaywrightError, sync_playwright  # noqa: F401 (other parts import these from here)
+
+from remidex.places import APP_DIR, LOG_FILE, SHARED_DIR, homes  # noqa: F401 (other parts import these from here)
 
 
 SITE = "https://www.remilia.net"
@@ -20,22 +19,14 @@ COOKIES_FILE = APP_DIR / "cookies.json"
 STATE_FILE = APP_DIR / "state.json"
 OVERRIDES_FILE = APP_DIR / "overrides.json"  # the switches, picks and hammer limits set on the dashboard
 GAME_FILE = APP_DIR / "game.json"  # the last BeetleBoy state and cards seen, for the dashboard
-FEED_US_FILE = APP_DIR / "feed_us.json"  # live news about you from the activity feed (written by --watch-feed)
-ADDRESS = os.environ.get("REMIDEX_ADDRESS") or "http://remidex.localhost:8642"  # where RemiDex is (the website's address, on the website)
+FEED_US_FILE = APP_DIR / "feed_us.json"  # live news about you from the activity feed (written by the website's feed watcher)
+ADDRESS = os.environ.get("REMIDEX_ADDRESS") or "https://remidex.xyz"  # the website
 LOGIN_HELP = f"To sign in again, open RemiDex ({ADDRESS})"
 DASH_DIR = APP_DIR / "dashboard"  # your theme, profile picture and item icons, for the dashboard
 PEOPLE_PICS = DASH_DIR / "viewers"  # profile pictures for the dashboard's activity: who viewed you, and who was poked
 ICONS_PER_RUN = 25  # item icons fetched per run, so a big inventory fills in over a few runs
 VIEWS_KEPT = 300
 
-
-try:
-    from playwright.sync_api import Error as PlaywrightError, sync_playwright  # noqa: F401 (other parts import these from here)
-except ImportError:
-    # Playwright lives in the installer's Python environment; hop into it so `python3 poke_browser.py` just works.
-    if VENV_PYTHON.exists() and Path(sys.executable) != VENV_PYTHON:
-        os.execv(VENV_PYTHON, [str(VENV_PYTHON), *sys.argv])
-    sys.exit("Playwright isn't installed yet. Run the installer first.")
 
 
 DELAY = 0.5
@@ -60,18 +51,11 @@ def note_health(status):
 
 
 class NeedsLogin(Exception):
-    """Something only a new sign-in can solve; scheduled runs pause."""
+    """Something only a new sign-in can solve: the bot pauses until then."""
 
 
 def log(message):
     print(f"{datetime.now():%Y-%m-%d %H:%M:%S} {message}", flush=True)
-
-
-def notify(message, subtitle=""):
-    """A Mac notification from RemiDex. (Only on a Mac: on a server there's nobody to show one to.)"""
-    if sys.platform == "darwin":
-        script = f"display notification {json.dumps(message, ensure_ascii=False)} with title \"RemiDex\"" + (f" subtitle {json.dumps(subtitle, ensure_ascii=False)}" if subtitle else "")
-        subprocess.run(["osascript", "-e", script], capture_output=True)
 
 
 def http_error(status, body):

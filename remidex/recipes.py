@@ -9,7 +9,6 @@ from pathlib import Path
 import quests
 from remidex.core import (
     ASSEMBLE,
-    HOSTED,
     JUNK_CUBE_CRAFT,
     KEY,
     LOG_FILE,
@@ -26,11 +25,11 @@ from remidex.core import (
     read_json,
     write_json,
 )
-from remidex.settings import alert, valid_make
+from remidex.settings import valid_make
 
 
-# Shared by everyone on the website (on a Mac, they're just yours): every craft counts toward everyone's odds and the
-# recipes everyone sees verified, and a recipe the game says doesn't exist is gone for everyone.
+# Shared by everyone: every craft counts toward everyone's odds and the recipes everyone sees verified, and a recipe the
+# game says doesn't exist is gone for everyone.
 CRAFT_STATS_FILE = SHARED_DIR / "craft_stats.json"  # how each recipe has gone, for the planner to learn from
 REMOVED_FILE = SHARED_DIR / "removed_recipes.json"  # recipes the game says don't exist, left out of the recipe book for good
 ADAMANTINE = 5
@@ -49,7 +48,7 @@ STUCK_COST = 1000  # for a plan made for what a waiting step needs, when the pla
 # What hunts and claims often bring, and about how many crafts' worth of waiting each is (recipe-book groups as "@...",
 # an exact item costs double its group's). The planner waits for these when crafting one would cost more.
 DROPS = {"@junk": 2, SACRIFICE: 1, "@beetle_2": 1, "@beetle_3": 4, "@flower_2": 6, "@flower_3": 8}
-# The recipe book and item list the dashboard uses too (copied next to this script by install_browser.sh).
+# The recipe book and item list (the dashboard uses them too).
 RECIPES_FILE = Path(__file__).resolve().parent.parent / "recipes.json"
 CATALOG_FILE = Path(__file__).resolve().parent.parent / "catalog.json"
 
@@ -147,8 +146,8 @@ def recipe_book():
 
 
 def remove_recipe(label, tried=None):
-    """Takes a recipe the game said doesn't exist ("NOTHING HAPPENED") out of the recipe book for good, for everyone: it
-    stays out after reinstalls too. Everyone's Auto makes picked by recipe keep pointing at the same recipes (they're
+    """Takes a recipe the game said doesn't exist ("NOTHING HAPPENED") out of the recipe book for good, for everyone.
+    Everyone's Auto makes picked by recipe keep pointing at the same recipes (they're
     numbered by place in the book), and one picked by this recipe goes on by any recipe. tried: what was crafted, for
     the dashboard."""
     book = recipe_book()[0]
@@ -159,7 +158,7 @@ def remove_recipe(label, tried=None):
             index = None  # (someone else's bot took it out already, and moved everyone's Auto makes along)
         removed.setdefault("recipes", {})[label] = {"at": time.time(), "tried": tried}
         write_json(REMOVED_FILE, removed)
-    everyone = [home / OVERRIDES_FILE.name for home in homes()] if HOSTED else [OVERRIDES_FILE]
+    everyone = dict.fromkeys([OVERRIDES_FILE, *(home / OVERRIDES_FILE.name for home in homes())])  # (this bot's, and everyone's)
     for path in everyone if index is not None else []:
         with editing(path):
             overrides = read_json(path)
@@ -833,7 +832,6 @@ def note_make_done(state, settings, bag, book):
             + ("Next one from the queue." if read_json(OVERRIDES_FILE).get("make_queue") else
                "Back to the quest you picked." if settings.get("goal") else "Nothing more to craft until you pick another."))
         state["make_done"] = make["set_at"]
-        alert("make_done", "Auto make done", f"{make_title(make['keys'], bag, book)} is made.")
         task, logs = task_id("make", settings), state.get("task_logs") or {}
         if task in logs:  # its record is put away: another of the same item later (a hammer made, broken, made again) starts afresh
             logs[finished_key(task, make)] = logs.pop(task)
@@ -1043,10 +1041,6 @@ def note_outside_crafts(before, after, cards):
         broke = " The hammer shattered!" if shattered and n == len(crafts) - 1 and r["mode"] == "smash" else ""
         log(f"BeetleCraft: {what} -> {name(out)} (by you, on RemiliaNET{hammer if r['mode'] == 'smash' else ''}).{broke}")
         note_craft({}, None, recipe_label(r), what, {"beetle": out, "beetle_name": name(out)})
-        if broke:
-            alert("hammer_broke", "A hammer broke", f"Your {name(used)} shattered during a smash." if used else "A hammer shattered during a smash.")
-    if failed and shattered:
-        alert("hammer_broke", "A hammer broke", f"Your {name(used)} shattered during a smash." if used else "A hammer shattered during a smash.")
     if failed:
         log(f"BeetleCraft: Smash failed: {'a Green Beetle' if failed == 1 else f'{failed} Green Beetles'} lost (by you, on RemiliaNET{hammer}).{' The hammer shattered!' if shattered else ''}")
 

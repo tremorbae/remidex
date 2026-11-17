@@ -20,7 +20,6 @@ from remidex.core import (
     stamp,
     write_json,
 )
-from remidex.settings import alert
 from remidex.recipes import (
     Bag,
     advance_queues,
@@ -45,7 +44,7 @@ from remidex.recipes import (
     usable,
 )
 from remidex.says import SCREEN, craft_says
-from remidex.state import quest_title, save_game
+from remidex.state import save_game
 from remidex.beetle import beetle_action
 
 
@@ -225,7 +224,7 @@ def stop_run(state):
     write_json(STATE_FILE, state)
 
 
-def beetlecraft(site, state, dry_run, settings):
+def beetlecraft(site, state, settings):
     """Crafts toward the Auto make or quest picked on the dashboard (see craft_candidates), up to CRAFTS_PER_RUN times in
     a row, each after a CRAFT_GAP countdown (see count_down), and logs each one. With neither picked it only reads the
     game, for the dashboard. Anything saved on the dashboard meanwhile (a pause, say) ends the run before the next craft,
@@ -236,7 +235,7 @@ def beetlecraft(site, state, dry_run, settings):
              settings.get("hammer_order"), settings.get("hammer_limits"), settings.get("hammer_off"), settings.get("steps")]
     picked = state.get("craft_picks") != picks  # a quest, Auto make, pause or hammer setting was picked on the dashboard: look now
     state["craft_picks"] = picks
-    if not dry_run and not picked and time.time() < state.get("craft_check_at", 0):
+    if not picked and time.time() < state.get("craft_check_at", 0):
         return
     status, game = site.api("GET", "/api/beetle/user")
     cards_status, cards = site.api("GET", "/api/beetle/cards")
@@ -255,9 +254,6 @@ def beetlecraft(site, state, dry_run, settings):
     while crafted < CRAFTS_PER_RUN:
         bag, slot3 = Bag(game, cards), bool(game.get("crafting_slot3_unlocked"))
         if not slot3 and usable(bag, settings).count(KEY) and craft_focus(bag, slot3, settings, book)[0] in ("make", "goal"):  # only for a task
-            if dry_run:
-                print("BeetleCraft: would unlock crafting slot 3 with the BeetleBoy Key.")
-                return
             shown = True
             if not count_down(site, "Unlock crafting slot 3", None, saved):
                 stop_run(state)
@@ -279,9 +275,6 @@ def beetlecraft(site, state, dry_run, settings):
         what, how = describe_craft(bag, mode, items, hammer, sacrifice)
         side = side_craft(settings, label)  # (an Auto Junk Cubes or Auto Tin Hammer craft, not the task's)
         task = None if side else task_id(craft_focus(bag, slot3, settings, book)[0], settings)
-        if dry_run:
-            print(f"BeetleCraft: next craft would be: {what}{how}.")
-            return
         shown = True
         if not count_down(site, what, side, saved):  # paused, stopped or changed on the dashboard: not with what was picked before
             stop_run(state)
@@ -294,8 +287,6 @@ def beetlecraft(site, state, dry_run, settings):
         body = body if isinstance(body, dict) else {}
         message, made = body.get("message"), body.get("result") if isinstance(body.get("result"), dict) else {}
         broke = " The hammer shattered!" if body.get("hammer_broke") else ""
-        if broke:
-            alert("hammer_broke", "A hammer broke", f"Your {bag.name(hammer)} shattered during a smash.")
         if message == "SUCCESS" and made.get("beetle"):
             cards[made["beetle"]] = made  # new discoveries count from now on
             log(f"BeetleCraft: {what} -> {made.get('beetle_name', made['beetle'])}{how}.{broke}")
@@ -330,20 +321,15 @@ def beetlecraft(site, state, dry_run, settings):
     if shown:
         crafting_now("done")
     bag, slot3 = Bag(game, cards), bool(game.get("crafting_slot3_unlocked"))
-    if not dry_run:
-        note_make_done(state, settings, bag, book)  # hunts and claims can bring it too
+    note_make_done(state, settings, bag, book)  # hunts and claims can bring it too
     goal = settings.get("goal")
     if goal and book and not goal_needs_left(bag, slot3, settings):
         done_key = f"{goal} {settings.get('goal_set_at')}"
-        if state.get("goal_done") != done_key and not dry_run:
+        if state.get("goal_done") != done_key:
             log(f"BeetleCraft: the quest you picked ({goal}) is done. "
                 + ("Next one from the queue." if read_json(OVERRIDES_FILE).get("goal_queue") else "Nothing more to craft until you pick another."))
             state["goal_done"] = done_key
-            alert("quest_done", "Quest done", f"{quest_title(goal)} is done.")
-    if not dry_run and book and advance_queues(bag, slot3, book):
+    if book and advance_queues(bag, slot3, book):
         next_check = 0  # start on it straight away
-    if dry_run:
-        print("BeetleCraft: nothing to craft right now.")
-        return
     state["craft_check_at"] = time.time() + next_check
     write_json(STATE_FILE, state)

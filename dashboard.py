@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""RemiDex, the bot's dashboard, at http://remidex.localhost:8642 (or http://localhost:8642), so you can watch it in your browser.
+"""One person's RemiDex dashboard, which the website (hosted/web.py) runs for each person in their folder
+(REMIDEX_HOME) on a port of its own (REMIDEX_PORT), and passes their requests on to.
 
 Mostly read-only: it shows what the bot has saved (its state, the last BeetleBoy snapshot, item icons and the log) and
-never uses your sign-in. It downloads, once each: RemiliaNET's public look (fonts, logo and background pattern), so
-it can match it, and pictures of items you haven't discovered yet from the BeetleBoy Advance fan project (the game
-only shows those once you've found them). What it changes (the auto/manual switches, the quest, Auto make and the
-hammer settings) it saves to overrides.json for the bot to pick up. It only listens on this Mac. install_browser.sh
-keeps it running.
-
-    python3 dashboard.py    serve the dashboard (Ctrl-C to stop)
+never uses the sign-in. It downloads, once each: RemiliaNET's public look (fonts, logo and background pattern), so
+it can match it, and pictures of items not discovered yet from the BeetleBoy Advance fan project (the game only shows
+those once they're found). What it changes (the auto/manual switches, the quest, Auto make and the hammer settings)
+it saves to overrides.json for the bot to pick up. It only answers on this server, to the website.
 """
 import gzip
 import hashlib
@@ -33,10 +31,9 @@ import quests
 import store
 from remidex import browser, says
 
-HOST, PORT = "127.0.0.1", int(os.environ.get("REMIDEX_PORT") or 8642)  # (on the website, each person's dashboard has a port of its own)
-NAMES = {f"remidex.localhost:{PORT}", f"localhost:{PORT}", f"127.0.0.1:{PORT}"}  # what the dashboard answers to (a .localhost name is always this computer)
-ADDRESS = f"http://remidex.localhost:{PORT}"  # only answers on this computer (the website passes requests on to it: see hosted/web.py)
-SCHEDULER_FILE = bot.SHARED_DIR / "scheduler.json"  # on the website: the scheduler that runs everyone's rounds says it's there
+HOST, PORT = "127.0.0.1", int(os.environ.get("REMIDEX_PORT") or 8642)  # (each person's dashboard has a port of its own)
+NAMES = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}  # what the dashboard answers to: this server, as the website asks it
+SCHEDULER_FILE = bot.SHARED_DIR / "scheduler.json"  # the website's scheduler, which runs everyone's rounds, says it's there
 ITEM_KEY = re.compile(r"^[a-z0-9_]{1,60}$")
 MAX_LOCKED = 300  # items that can be switched off at once
 PAGE = Path(__file__).with_name("dashboard.html")
@@ -44,7 +41,6 @@ SIGN_IN_PAGE = Path(__file__).with_name("signin.html")  # shown instead while th
 LOG_FILE = bot.LOG_FILE
 LOG_TAIL_BYTES = 600_000  # enough for today's lines without reading the whole log
 LOG_LINES = 1500  # the page shows the newest 250 for whichever tab is open
-JOBS = {"bot": "local.remilianet-poke-browser"}  # the background jobs the page says are running or not
 # The site's public look, fetched once and kept in bot.DASH_DIR / "public".
 PUBLIC = {
     "Hei.ttf": ("/fonts/Hei.ttf", "font/ttf"),
@@ -378,7 +374,7 @@ def me_live(fresh=False):
         return {"live": True, "handle": handle, "name": user.get("displayName") or handle, "bio": user.get("bio") or "", "pfp": pic_link(user.get("pfpUrl")) or "/pfp", "friends": friends,
                 "top": [{"handle": f["userHandle"], "name": f.get("displayName") or f["userHandle"], "pfp": pic_link(f.get("pfpUrl")) or f"/viewer/{f['userHandle']}"} for f in top]}
     saved = bot.read_json(bot.MY_PROFILE_FILE)
-    pfp = "/pfp" if (bot.DASH_DIR / "pfp").exists() else ""  # none yet, on a new install, until the bot saves it
+    pfp = "/pfp" if (bot.DASH_DIR / "pfp").exists() else ""  # none yet, for someone new, until the bot saves it
     return {"live": False, "handle": handle, "name": saved.get("name") or handle, "bio": saved.get("bio") or "", "pfp": pfp, "fetched_at": saved.get("fetched_at"), "friends": friends,
             "top": [{**f, "pfp": f"/viewer/{f['handle']}"} for f in saved.get("top_friends") or []]}
 
@@ -508,26 +504,12 @@ def all_items(bag, cards):
     return sorted(items, key=lambda i: (i["tier"], CATEGORY_ORDER.get(i["category"], 9), i["name"]))
 
 
-_jobs = {"at": 0.0, "running": {}}
-
-
 def running_jobs():
-    """Which background jobs have a live process (launchd's; on the website, the scheduler that runs everyone's rounds):
-    asked at most every 10 seconds."""
-    if bot.HOSTED:
-        return {"bot": time.time() - (bot.read_json(SCHEDULER_FILE).get("at") or 0) < 60}
-    if time.time() - _jobs["at"] < 10:
-        return _jobs["running"]
-    try:
-        out = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return {}
-    pids = {parts[2]: parts[0] for parts in (line.split("\t") for line in out.splitlines()) if len(parts) == 3}
-    _jobs.update(at=time.time(), running={name: pids.get(label, "-") != "-" for name, label in JOBS.items()})
-    return _jobs["running"]
+    """Whether the bot's running: the website's scheduler, which runs everyone's rounds, has said it's there lately."""
+    return {"bot": time.time() - (bot.read_json(SCHEDULER_FILE).get("at") or 0) < 60}
 
 
-QUIET = ("Chrome:", "Network:")  # hiccups the bot gets over on its own (see bot.hiccup): in the Console, but calm
+QUIET = ("Browser:", "Network:")  # hiccups the bot gets over on its own (see bot.hiccup): in the Console, but calm
 
 
 def log_lines():
@@ -1034,7 +1016,6 @@ def status():
                for v in saved_views.get("notes") or [] if isinstance(v, dict) and v.get("handle")]
     result = {
         "now": now,
-        "hosted": bot.HOSTED,  # (the website: the page offers your account's page, and says nothing about installing)
         "look": {"hue": look.get("color") if isinstance(look.get("color"), (int, float)) else 204,
                  "name": look.get("displayName"), "pfp": (bot.DASH_DIR / "pfp").exists()},
         "jobs": running_jobs(),
@@ -1298,7 +1279,7 @@ def edit_queue(overrides, request):
 class Handler(BaseHTTPRequestHandler):
     def local_only(self):
         """Whether the request was addressed to this dashboard by one of its names (NAMES) on our port. A web page can make a
-        browser send requests to this Mac under another name (DNS rebinding) to read what's here; those are refused."""
+        browser send requests to this server under another name (DNS rebinding) to read what's here; those are refused."""
         return self.headers.get("Host") in NAMES
 
     def end_with_safe_headers(self):
@@ -1628,12 +1609,12 @@ class Handler(BaseHTTPRequestHandler):
         self.answer_json({"id": item["id"]})
 
     def sign_in(self, request):
-        """From the sign-in page, while the bot's signed out (it leaves Chrome alone then):
+        """From the sign-in page, while the bot's signed out (it leaves its browser alone then):
             POST /api/sign-in {"email", "password"}   signs the bot in to RemiliaNET, in the background (about half a
                                                       minute); answers {"started": true, "attempt"}. GET /api/sign-in says how it's going.
             POST /api/sign-in/code {"code"}           the two-factor code, once it says "step": "code"
             POST /api/sign-in/stop {}                 stops it (to start over)
-        The password and code go straight to the bot's Chrome, and are never saved. 409: not now (signed in already, a
+        The password and code go straight to the bot's browser, and are never saved. 409: not now (signed in already, a
         sign-in's under way, or it isn't waiting for a code)."""
         if self.path == "/api/sign-in/code":
             code = re.sub(r"[\s-]", "", str(request.get("code") or ""))
@@ -1715,7 +1696,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"RemiDex: {ADDRESS}", flush=True)
+    print(f"RemiDex dashboard: port {PORT}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

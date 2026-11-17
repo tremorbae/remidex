@@ -1,38 +1,19 @@
-"""The dashboard's switches and picks (saved in overrides.json), and the Mac alerts."""
+"""The dashboard's switches and picks (saved in overrides.json)."""
 
-import time
-
-from remidex.core import HAMMERS, OVERRIDES_FILE, PURPLE, SACRIFICE, notify, read_json, stamp
+from remidex.core import HAMMERS, OVERRIDES_FILE, PURPLE, SACRIFICE, read_json, stamp
 
 
 SOCIAL_SETTINGS = ("pokes", "friend_requests", "view_profiles")  # the dashboard's switches for what reaches other people
 # BeetleBoy: the free claims whenever they're ready, then hunts with whatever cheese there is (each has its switch on the
 # dashboard). Actions are named as the website names them.
 BEETLE_SETTINGS = ("catchBeetle", "claimUBC", "junkFaucet", "beetleHunt")
-# The bot works in short rounds with Chrome closed in between, so the Mac stays cool: a round pokes up to
-# POKES_PER_SESSION people, POKE_GAP seconds apart, and then Chrome rests SESSION_REST seconds. (About as many pokes a
-# day as one every 1–2 minutes, but with Chrome open a few minutes in every half hour, not all day.)
+# The bot works in short rounds with its browser closed in between, so the server can run everyone's: a round pokes up
+# to POKES_PER_SESSION people, POKE_GAP seconds apart, and then rests SESSION_REST seconds. (About as many pokes a day as
+# one every 1–2 minutes, but with a browser open a few minutes in every half hour, not all day.)
 POKE_GAP = (4, 10)  # seconds from one poke to the next within a round: a random wait between these
 POKES_PER_SESSION = 20
-SESSION_REST = (20 * 60, 30 * 60)  # how long Chrome stays closed after a round: a random wait between these
+SESSION_REST = (20 * 60, 30 * 60)  # the rest after a round, with the browser closed: a random wait between these
 HAMMER_LIMIT = 25  # a hammer smashes while its break chance is under this, unless its own limit is set on the dashboard
-# What's worth a Mac notification (a hammer breaking isn't: the log and the dashboard say so).
-ALERT_KINDS = {"signed_out": True, "streak": True, "quest_done": True, "make_done": True, "level_up": True, "achievement": True, "hammer_broke": False}
-_ALERTED = {}
-
-
-def alert(kind, title, message, once=None):
-    """A Mac notification for something worth knowing right away (see ALERT_KINDS). The same thing isn't announced twice
-    within six hours."""
-    if not ALERT_KINDS.get(kind):
-        return
-    key, now = (kind, once or message), time.time()
-    if now - _ALERTED.get(key, 0) < 6 * 3600:
-        return
-    _ALERTED[key] = now
-    notify(message, title)
-
-
 def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 

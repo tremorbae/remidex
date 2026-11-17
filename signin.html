@@ -77,7 +77,7 @@
     <div class="header"><span>登录</span><span>Sign in</span></div>
     <form id="form" autocomplete="on">
       <img class="logo" src="/logo.svg" alt="RemiDex" width="150" height="40">
-      <p class="lead">Sign in with your RemiliaNET account to start the bot.</p>
+      <p class="lead">Plays BeetleBoy and BeetleCraft on RemiliaNET for you. Sign in with your RemiliaNET account to start your own.</p>
       <label>Email<input id="email" name="username" type="text" inputmode="email" autocomplete="username" spellcheck="false" autocapitalize="off" required autofocus></label>
       <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required></label>
       <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span id="goText">SIGN IN</span></button>
@@ -126,7 +126,7 @@ function show(s) {  // how it's going (GET /api/sign-in): {signed_in, running, s
   $("go").classList.toggle("working", working || stopping);
   $("goText").textContent = stopping ? "STOPPING…" : working ? "SIGNING IN…" : "SIGN IN";
   $("note").textContent = stopping ? "Stopping the last sign-in." : working ? "Signing in to RemiliaNET. This takes about half a minute."
-    : error ? `Didn't sign in: ${error}.` : "Your password goes straight to RemiliaNET. RemiDex doesn't save it.";
+    : error ? `Didn't sign in: ${error}.` : "Your password goes straight to RemiliaNET and isn't saved. RemiDex keeps the sign-in RemiliaNET gives, to run your bot. Not made by Remilia.";
   $("note").classList.toggle("bad", !!error);
   if (error && error !== lastError && !$("password").value) $("password").focus();  // (once, as it appears)
   lastError = error;
@@ -143,7 +143,7 @@ async function send(path, body) {
   if (!r.ok) throw new Error(r.status === 409 ? "busy" : `HTTP ${r.status}`);
   return r.json();
 }
-const sendError = err => err.message === "Failed to fetch" ? "RemiDex isn't answering. Is it running?"
+const sendError = err => err.message === "Failed to fetch" ? "RemiDex isn't answering. Try again in a minute."
   : err.message === "HTTP 429" ? "Too many sign-ins from here. Try again in a few minutes"  // (the website, guarding RemiliaNET's accounts)
   : err.message === "HTTP 503" ? "RemiDex is busy signing other people in. Try again in a minute"
   : `RemiDex didn't take it (${err.message})`;

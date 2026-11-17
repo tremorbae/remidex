@@ -21,7 +21,7 @@ from pathlib import Path
 from remidex.places import APP_DIR, SHARED_DIR
 
 DB_FILE = APP_DIR / "remidex.db"
-FEED_DB = SHARED_DIR / "remidex.db"  # who the activity feed showed lately: the same for everyone (on a Mac, that's DB_FILE)
+FEED_DB = SHARED_DIR / "remidex.db"  # who the activity feed showed lately: the same for everyone
 VIEW_EVERY = 24 * 3600  # someone viewed is left alone this long
 LOG_MOST = 4_000_000  # bytes: past this, the log is trimmed (see trim_log)...
 LOG_KEEP = 2_000_000  # ...to about its newest this many
@@ -49,9 +49,9 @@ _ready = set()
 def connect(path=None):
     """A connection to the database (DB_FILE, or path), made (with its tables) if it isn't there yet."""
     path = path or DB_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)  # (before connecting: a folder that isn't there yet can't hold it)
     db = sqlite3.connect(str(path), timeout=15, isolation_level=None)
     if str(path) not in _ready:
-        path.parent.mkdir(parents=True, exist_ok=True)
         for attempt in range(8):  # the bot and the feed watcher can start it at the same moment: the loser waits a little
             try:
                 db.execute("PRAGMA journal_mode=WAL")  # the bot and the dashboard can use it at the same time

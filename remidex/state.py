@@ -1,4 +1,4 @@
-"""What the bot writes down for the dashboard: the game state, the history, pictures, notes and the streak warning."""
+"""What the bot writes down for the dashboard: the game state, the history, pictures and notes."""
 
 import sqlite3
 import time
@@ -19,33 +19,15 @@ from remidex.core import (
     read_json,
     write_json,
 )
-from remidex.settings import alert
 from remidex.recipes import note_outside_crafts
 
 
 LEVELS_FILE = DASH_DIR / "levels.json"  # the lowest and highest XP seen at each level, to learn how much XP a level takes
 ART_RETRY = 24 * 3600  # a picture the site doesn't have is asked for again only this often
-STREAK_WARN = 4 * 3600  # warn when today's daily cheese is still unclaimed this close to the end of the day (UTC)
 
 
 def quest_title(quest_id):
     return next((q[2] for q in quests.QUESTS if q[1] == quest_id), quest_id)
-
-
-def streak_watch(game):
-    """Warns when today's daily cheese is still unclaimed late in the day (UTC, when the streak turns over), which would
-    break the streak. Run after the bot has had its go at claiming it, so it only speaks up when the claim is left to
-    you (switched to manual) or didn't go through."""
-    if (game.get("cooldowns") or {}).get("claimUBC") and not game.get("isStreakAtRisk"):
-        return  # already claimed today
-    now = time.gmtime()
-    left = 86400 - (now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)
-    streak = store.streak()
-    if left > STREAK_WARN and not game.get("isStreakAtRisk"):
-        return
-    hours, minutes = divmod(left // 60, 60)
-    alert("streak", "Your cheese streak is at risk", f"Today's daily cheese isn't claimed, and the day ends in {hours}h {minutes:02d}m (UTC)."
-          + (f" Your {streak}-day streak would start over." if streak and streak > 1 else ""), once=f"streak {time.strftime('%Y-%m-%d', now)} {'last hour' if left < 3600 else 'evening'}")
 
 
 def save_game(game, cards=None, outside=False):
@@ -66,7 +48,6 @@ def save_game(game, cards=None, outside=False):
         return
     if isinstance(before, int) and level > before:
         log(f"Level up! You're now level {level}.")
-        alert("level_up", f"Level {level}!", f"You're now level {level} in BeetleBoy.")
     note_level(game)
 
 

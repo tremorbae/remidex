@@ -1,5 +1,5 @@
-"""The bot's main loop on a fake clock with a fake site: short rounds (what's due, a batch of pokes a few seconds apart),
-then Chrome closes and rests; changes from the dashboard are acted on fast; using the dashboard keeps Chrome open."""
+"""The bot's rounds on a fake clock with a fake site: what's due, a batch of pokes a few seconds apart, then the browser
+closes and rests; changes from the dashboard are acted on fast; using the dashboard keeps the round going."""
 import json
 import random
 import tempfile
@@ -53,7 +53,7 @@ def stub(name, push, every):
 
 
 support.patch(**paths, time=fake_time, log=lambda m: None, Site=FakeSite, sync_playwright=lambda: Ctx(),
-              poke_next=lambda site, st, dry, settings: (events.append(("poke", clock["t"])), clock["t"])[1],
+              poke_next=lambda site, st, settings: (events.append(("poke", clock["t"])), clock["t"])[1],
               play_beetleboy=stub("claims", "beetle_check_at", 900), beetlecraft=stub("craft", "craft_check_at", 900),
               cache_profile_views=stub("news", "views_check_at", 300), accept_requests=stub("friends", "accept_check_at", 300),
               cache_for_dashboard=lambda site: None, view_feed_users=lambda *a, **k: 0, sync_game=lambda *a: None, sync_chat=lambda site: None, write_json=lambda path, data: None,
@@ -166,36 +166,30 @@ hooks["wait"] = None
 clicked = at(rel, "CLICK")
 ok(clicked and claimed and claimed[0] - start - clicked[0] <= pb.TICK + 1, f"a click is done within {pb.TICK + 1}s ({claimed[0] - start - clicked[0] if claimed and clicked else None}s)")
 
-# ---- between rounds (run_forever): Chrome rests; a failed round is tried again in a minute, then after the usual rest
+# ---- the website's scheduler starts a round whenever round_wanted says so (each a program of its own: run_round): a
+# failed round is tried again in a minute, then after the usual rest
 clock["t"] += 3600
-support.patch(write_json=real_write_json, TICK=30)
+support.patch(write_json=real_write_json)
 real_write_json(paths["COOKIES_FILE"], {})
 real_write_json(paths["STATE_FILE"], {**fresh_state(), "beetle_check_at": clock["t"] + 10 ** 6, "craft_check_at": clock["t"] + 10 ** 6,
                                       "views_check_at": clock["t"] + 10 ** 6, "accept_check_at": clock["t"] + 10 ** 6})
-rounds, outcomes = [], iter(["fail", "fail", "ok", "ok", "ok"])
-
-
-class Done(BaseException):  # (not an Exception: the loop carries on after those)
-    pass
+rounds, outcomes = [], iter(["fail", "fail", "ok", "ok", "ok", "ok"])
 
 
 def fake_round(state, settings):
     rounds.append(clock["t"])
     state["next_slot_at"] = clock["t"]  # (always something due: only the rest holds the next round back)
-    if next(outcomes, "stop") == "fail":
+    if next(outcomes) == "fail":
         raise RuntimeError("couldn't check the sign-in (HTTP 0)")
-    if len(rounds) > 5:
-        raise Done
 
 
 support.patch(chrome_session=fake_round)
-try:
-    loop.run_forever()
-except Done:
-    pass
+while len(rounds) < 6:
+    if loop.round_wanted(tmp):
+        loop.run_round()
+    else:
+        clock["t"] += 30  # (the scheduler looks every couple of seconds: coarser here)
 waits = [round(b - a) for a, b in zip(rounds, rounds[1:])]
-ok(len(waits) == 5, f"rounds keep coming ({len(rounds)})")
 ok(loop.ERROR_RETRY <= waits[0] <= loop.ERROR_RETRY + 30, f"after a failed round: again in about a minute ({waits[0]} s)")
-ok(all(REST[0] <= w <= REST[1] + 30 for w in waits[1:]), f"otherwise the usual rest, with Chrome closed ({waits[1:]} s)")
-ok(not hasattr(loop, "stay_awake") and "caffeinate" not in Path(loop.__file__).read_text(), "it never keeps the Mac awake")
+ok(all(REST[0] <= w <= REST[1] + 30 for w in waits[1:]), f"otherwise the usual rest, with the browser closed ({waits[1:]} s)")
 ok.done()

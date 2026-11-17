@@ -1,4 +1,4 @@
-"""The headless Chrome session: the Site wrapper that makes API calls as the signed-in page, and signing in (from the
+"""The bot's headless browser: the Site wrapper that makes API calls as the signed-in page, and signing in (from the
 dashboard's sign-in page)."""
 
 import html
@@ -27,8 +27,7 @@ from remidex.core import (
 from remidex.settings import BEETLE_SETTINGS, SOCIAL_SETTINGS
 
 
-# The bot's browser profile. (Not chrome-profile, which your Google Chrome made when the bot used it: a newer Chrome's
-# profile can't be opened by the bot's older Chromium. The installers delete it; the sign-in is in cookies.json.)
+# The bot's browser profile. (The sign-in itself is kept in cookies.json.)
 PROFILE_DIR = APP_DIR / "browser-profile"
 SIGN_IN_WAIT = 45  # how long a run gives the page to restore its sign-in
 FORM_WAIT = 60  # how long RemiliaNET's sign-in page gets to show its form (seconds; a slow server needs a while)
@@ -51,7 +50,7 @@ CANT_DO = {
     "webauthn-authenticate.ftl": "RemiliaNET asked for a passkey or security key, which RemiDex can't use. An authenticator app code works",
     "login-page-expired.ftl": "RemiliaNET's sign-in page expired. Sign in again",
 }
-# Nobody sees the bot's page, but RemiliaNET's front page redraws a canvas 60 times a second, which kept Chrome busy
+# Nobody sees the bot's page, but RemiliaNET's front page redraws a canvas 60 times a second, which kept the browser busy
 # around the clock. This, run in the page before the site's own code, lets it draw once a second and stops CSS
 # animations: a tenth of the CPU, and the site and its sign-in work the same. (Not used while signing in.)
 CALM = """(() => {
@@ -142,8 +141,7 @@ UPLOAD = """async field => {
 
 
 def open_browser(playwright, profile, calm=True):
-    """The bot's browser, unseen, keeping its profile in the folder profile: Playwright's own headless Chromium, not your
-    Google Chrome, which is left alone (macOS took the bot's copy for yours, so yours wouldn't open a window). Unseen, a
+    """The bot's browser, unseen, keeping its profile in the folder profile: Playwright's own headless Chromium. Unseen, a
     page needs no animations ("reduced motion", and CALM unless calm is False) or pictures, and the site and its sign-in
     work the same. (The bot's own downloads, like item icons, don't go through the page.) Returns its context."""
     profile.mkdir(parents=True, exist_ok=True)
@@ -156,11 +154,11 @@ def open_browser(playwright, profile, calm=True):
 
 
 class Site:
-    """Chrome with remilia.net open, unseen."""
+    """A browser with remilia.net open, unseen."""
 
     def __init__(self, playwright, calm=True):
         self.context = open_browser(playwright, PROFILE_DIR, calm)
-        # Chrome drops session-only cookies when it quits, and the sign-in may use them; put back the ones saved last run.
+        # A browser drops session-only cookies when it quits, and the sign-in may use them; put back the ones saved last run.
         saved = read_json(COOKIES_FILE).get("cookies")
         if saved:
             self.context.add_cookies(saved)
@@ -367,7 +365,7 @@ class Site:
             field.as_element().set_input_files(str(path))
             result = self.page.evaluate(UPLOAD, field)
         except PlaywrightError as e:
-            return None, f"Chrome: {str(e)[:120]}"
+            return None, f"Browser: {str(e)[:120]}"
         if isinstance(result, dict) and isinstance(result.get("mediaId"), int):
             note_health(200)
             return result["mediaId"], None
@@ -380,7 +378,7 @@ class Site:
         try:
             return self.page.evaluate(CHAT_SEND, [chat_id, kind, payload, expect])
         except PlaywrightError as e:  # (the page went away mid-send: it may have gone through)
-            return {"ok": None, "error": f"Chrome stopped while sending ({str(e)[:100]})"}
+            return {"ok": None, "error": f"The browser stopped while sending ({str(e)[:100]})"}
 
     def save_cookies(self):
         write_json(COOKIES_FILE, {"cookies": self.context.cookies()})
@@ -408,12 +406,12 @@ def new_here():
 
 
 def signed_out():
-    """The bot's waiting for a new sign-in. It never opens Chrome then, so a sign-in can use it."""
+    """The bot's waiting for a new sign-in. It never opens its browser then, so a sign-in can use it."""
     return bool(read_json(STATE_FILE).get("needs_login")) or not COOKIES_FILE.exists()
 
 
 def finish_sign_in(cookies, first_time):
-    """Once Chrome's closed (the bot opens it the moment this is done): the first-time switches for someone new here,
+    """Once the sign-in's browser is closed (the bot opens its own the moment this is done): the first-time switches for someone new here,
     the sign-in saved, and the pause lifted."""
     if first_time:
         first_sign_in_defaults()  # before the sign-in is saved: that's what says someone's been here
@@ -424,8 +422,8 @@ def finish_sign_in(cookies, first_time):
 
 
 def sign_in_with(email, password, ask_code=None):
-    """Signs the bot in to RemiliaNET with your email and password, in its own unseen Chrome (for the dashboard's sign-in
-    page): only while it's signed out, when the bot leaves Chrome alone. The password is only typed into RemiliaNET's
+    """Signs the bot in to RemiliaNET with your email and password, in its own unseen browser (for the dashboard's sign-in
+    page): only while it's signed out, when the bot leaves its browser alone. The password is only typed into RemiliaNET's
     page, never saved. If RemiliaNET wants your two-factor code, ask_code gets it (see Site.finish_steps). Returns (your
     handle, None) or (None, why not)."""
     if not signed_out():
@@ -484,6 +482,6 @@ def sign_in_from_dashboard():
     else:
         try:
             handle, why = sign_in_with(email.strip(), password, ask_code)
-        except (PlaywrightError, RuntimeError, OSError):  # (Chrome wouldn't start, or RemiliaNET wouldn't load)
-            handle, why = None, "Chrome couldn't open RemiliaNET. Try again in a minute"
+        except (PlaywrightError, RuntimeError, OSError):  # (the browser wouldn't start, or RemiliaNET wouldn't load)
+            handle, why = None, "RemiDex couldn't open RemiliaNET. Try again in a minute"
     say({"ok": True, "handle": handle} if handle else {"ok": False, "error": why})

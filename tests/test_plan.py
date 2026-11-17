@@ -34,7 +34,7 @@ ok(pb.task_record(state, "goal aims")["done"][-1][1:] == ["Smash Pond Beetle + M
 
 # ---- a Tin Hammer made, then broken, then made again: each Auto make shows only its own crafts
 from remidex import recipes  # noqa: E402
-support.patch(alert=lambda *a, **k: None, OVERRIDES_FILE=tmp / "overrides.json")  # (no Mac notification from a test)
+support.patch(OVERRIDES_FILE=tmp / "overrides.json")
 book = pb.recipe_book()[0]
 hammer = {"keys": ["hammer_t1"], "recipe": None, "set_at": clock("2026-10-22 00:10:00"), "start": 0, "paused": False}
 settings, tin = {"make": hammer, "goal": None}, {"beetle": "hammer_t1", "beetle_name": "Tin Hammer"}

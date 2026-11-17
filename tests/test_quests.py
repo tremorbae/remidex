@@ -45,4 +45,5 @@ ok("pokes_1000" in done and "pokes_5000" not in done, "the ones reached are note
 nothing = {q["id"]: q for q in quests.check(items, game, state, 0, {}, None)[0]}
 ok(nothing["pokes_100"]["have"] == 0 and nothing["streak_7"]["have"] == 0, "no history yet: nothing counted, no error")
 ok(json.dumps(shown), "it all goes to the page as JSON")
+ok(pb.quest_title("mars_rhino") == "Red Planet" and pb.quest_title("nope") == "nope", "quest titles")
 ok.done()

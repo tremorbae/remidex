@@ -1,8 +1,8 @@
-"""The main loop: short rounds with Chrome (what's due, a batch of pokes), and long rests with it closed."""
+"""The bot's rounds: what's due and a batch of pokes, with a browser open, then a long rest with it closed. The website's
+scheduler (hosted/web.py) starts each round (poke_browser.py --round) when round_wanted says one is wanted."""
 
 import argparse
 import random
-import sys
 import time
 import traceback
 
@@ -26,7 +26,7 @@ from remidex.core import (
     sync_playwright,
     write_json,
 )
-from remidex.settings import alert, current_settings, load_settings
+from remidex.settings import current_settings, load_settings
 from remidex.state import cache_for_dashboard, keep_history, save_game
 from remidex.social import (
     PROFILE_EDIT_FILE,
@@ -36,7 +36,6 @@ from remidex.social import (
     poke_next,
     profile_edit_waiting,
     view_feed_users,
-    watch_feed,
 )
 from remidex.beetle import CLAIM_FILE, claim_now, claims_waiting, play_beetleboy
 from remidex.chat import CHAT_OUT_FILE, chat_waiting, send_chat, sync_chat
@@ -48,8 +47,8 @@ TICK = 2  # seconds between looks while waiting: how quickly it notices a change
 STATUS_FILE = APP_DIR / "bot_status.json"  # what the bot is doing and what's next, for the dashboard
 FEED_REACT_GAP = 20  # react to live news about you at most this often (seconds)
 GAME_SYNC_EVERY = 15  # while someone's looking, re-read the game this often, so what they do on the site shows up (seconds)
-# The scheduled bot runs all the time (launchd just keeps it running), but opens Chrome only for short rounds, with
-# Chrome closed in between (see settings.SESSION_REST): a round does what's due and a batch of pokes, then ends.
+# A round opens a browser for a few minutes: it does what's due and a batch of pokes, then ends, and the browser stays
+# closed through the rest between rounds (see settings.SESSION_REST).
 CLOSE_WITHIN = 60  # a round ends once nothing's due within this (seconds)...
 SESSION_MAX = 10 * 60  # ...or after this long, even with things still due: they wait for the next round
 VIEW_TIME = 60  # a round spends this long at most viewing the profiles of people in the activity feed (seconds)
@@ -162,36 +161,12 @@ def schedule_next(state, settings, poked_at, last=False):
 
 
 def pause_for_login(error):
-    """Pauses the bot until a new sign-in clears it, with a single notification."""
+    """Pauses the bot until a new sign-in clears it."""
     state = read_json(STATE_FILE)
     if not state.get("needs_login"):
         state["needs_login"] = True
         write_json(STATE_FILE, state)
-        alert("signed_out", "Signed out of RemiliaNET", f"The bot is paused: {error}. {LOGIN_HELP}")
     log(f"Paused: {error}. {LOGIN_HELP}")
-
-
-def run_once(args):
-    """python3 poke_browser.py [--dry-run]: one poke (or a preview) right now."""
-    if not COOKIES_FILE.exists():
-        sys.exit("Not signed in yet: sign in on RemiDex (http://remidex.localhost:8642)")
-    state, settings = read_json(STATE_FILE), load_settings()
-    with sync_playwright() as playwright:
-        site = Site(playwright)
-        try:
-            poked_at = poke_next(site, state, args.dry_run, settings)
-            if not args.dry_run:
-                schedule_next(state, settings, poked_at)
-            play_beetleboy(site, state, args.dry_run, settings)
-            beetlecraft(site, state, args.dry_run, settings)
-            if not args.dry_run:
-                cache_for_dashboard(site)
-                cache_profile_views(site, state)
-            if settings["view_profiles"]:
-                view_feed_users(site, state, args.dry_run)
-            site.save_cookies()
-        finally:
-            site.close()
 
 
 def react(site, state, settings):
@@ -199,8 +174,8 @@ def react(site, state, settings):
     the dashboard shows. Each looks at its own timer, so what isn't due yet is left alone (a change from the dashboard
     counts as due, to the ones it affects)."""
     report(state, settings, "Checking in on your account")
-    play_beetleboy(site, state, False, settings)
-    beetlecraft(site, state, False, current_settings())  # (read again: a pause picked during the claims and hunts counts)
+    play_beetleboy(site, state, settings)
+    beetlecraft(site, state, current_settings())  # (read again: a pause picked during the claims and hunts counts)
     cache_profile_views(site, state)
     if settings["friend_requests"]:
         accept_requests(site, state)
@@ -208,10 +183,10 @@ def react(site, state, settings):
 
 
 def chrome_session(state, settings):
-    """One round with Chrome: whatever's due (claims and hunts, crafting, who's poked or viewed you, friend requests), a
-    batch of pokes a few seconds apart (see POKES_PER_SESSION), and up to VIEW_TIME of profile views in between. Returns
-    once nothing's due within CLOSE_WITHIN, or after SESSION_MAX, and Chrome closes. While you're using the dashboard,
-    or it has something for the bot to do, Chrome stays open, and changes from it are acted on within seconds."""
+    """One round, with a browser: whatever's due (claims and hunts, crafting, who's poked or viewed you, friend requests),
+    a batch of pokes a few seconds apart (see POKES_PER_SESSION), and up to VIEW_TIME of profile views in between. Returns
+    once nothing's due within CLOSE_WITHIN, or after SESSION_MAX, and the browser closes. While you're using the
+    dashboard, or it has something for the bot to do, the round goes on, and changes from it are acted on within seconds."""
     with sync_playwright() as playwright:
         site = Site(playwright)
         try:
@@ -231,12 +206,12 @@ def chrome_session(state, settings):
                 wanted = edited or someone_looking() or profile_edit_waiting() or chat_waiting() or claims_waiting()
                 viewing = settings["view_profiles"] and state.get("handle") and not viewed
                 if not wanted and (now - opened >= SESSION_MAX or (min(tasks.values()) - now > CLOSE_WITHIN and not viewing)):
-                    break  # the round's done: close Chrome
+                    break  # the round's done: close the browser
                 if tasks["poke"] <= now:
                     report(state, settings, "Poking")
                     poked += 1
-                    if schedule_next(state, settings, poke_next(site, state, False, settings), last=poked >= settings["batch"]):
-                        poked = 0  # (Chrome kept open for the dashboard: the next round's batch starts afresh)
+                    if schedule_next(state, settings, poke_next(site, state, settings), last=poked >= settings["batch"]):
+                        poked = 0  # (the round kept going for the dashboard: the next batch starts afresh)
                     site.save_cookies()
                     continue
                 if (first or edited or any(t <= now for k, t in tasks.items() if k != "poke")) and now - last_react >= TICK:
@@ -247,7 +222,7 @@ def chrome_session(state, settings):
                     views_until = views_until or now + VIEW_TIME
                     until = min(tasks["poke"] - 1, views_until, now + 8)
                     if until > now:
-                        if view_feed_users(site, state, False, until=until):
+                        if view_feed_users(site, state, until=until):
                             continue
                         viewed = True  # nobody (more) to view
                     elif now >= views_until:
@@ -264,22 +239,22 @@ def chrome_due_in(state, settings):
 
 
 def hiccup(e):
-    """A calm word for the log about a hiccup the bot gets over on its own (the Mac sleeping, a moment offline), or None
-    for a real error."""
+    """A calm word for the log about a hiccup the bot gets over on its own (its browser closing, a moment offline), or
+    None for a real error."""
     if "has been closed" in str(e):
-        return "Chrome: it was closed from outside (usually the Mac sleeping or waking); opening it again soon."
+        return "Browser: it closed unexpectedly; opening it again soon."
     if "(HTTP 0)" in str(e):
-        return "Network: RemiliaNET couldn't be reached (usually just after the Mac wakes); trying again soon."
+        return "Network: RemiliaNET couldn't be reached; trying again soon."
     return None
 
 
-def round_wanted(home=None):
+def round_wanted(home):
     """Whether a bot should have a round now: when something's due (a poke, a claim or hunt, a craft check, who's poked
     you, friend requests) and the rest after the last round is over (see chrome_due_in), or straight away when you pick
     something on the dashboard, click a claim, send a chat message or change your profile, or are using the dashboard. Never while a
-    new sign-in is needed. News about you from the activity feed is noted for the next round. home: another bot's
-    folder (the website's scheduler asks about everyone's), else this one's."""
-    where = (lambda f: home / f.name) if home else (lambda f: f)  # noqa: E731
+    new sign-in is needed. News about you from the activity feed is noted for the next round. home: the bot's folder
+    (the website's scheduler asks about everyone's)."""
+    where = lambda f: home / f.name  # noqa: E731
     state = peek_state(where(STATE_FILE))
     if state.get("needs_login") or not where(COOKIES_FILE).exists():
         return False
@@ -287,17 +262,16 @@ def round_wanted(home=None):
         state = read_json(where(STATE_FILE))
         news_about_you(state)
         write_json(where(STATE_FILE), state)
-    settings = load_settings(where(OVERRIDES_FILE)) if home else current_settings()
+    settings = load_settings(where(OVERRIDES_FILE))
     woken = [profile_edit_waiting(where(PROFILE_EDIT_FILE)), chat_waiting(where(CHAT_OUT_FILE)), someone_looking(where(LOOKING_FILE)),
              changed(where(OVERRIDES_FILE)), claims_waiting(where(CLAIM_FILE))]  # (all asked, so none is missed)
     return chrome_due_in(peek_state(where(STATE_FILE)), settings) <= 0 or any(woken)
 
 
 def run_round():
-    """--round (the website's scheduler starts one for a bot when round_wanted says so), and each round on a Mac: one
-    round (see chrome_session), then the rest after it (see chrome_due_in). After a round that failed, the next starts in
-    a minute; after two in a row, after the usual rest. (They're counted in the state, so a bot started afresh for each
-    round counts them too.)"""
+    """--round (the website's scheduler starts one for a bot when round_wanted says so): one round (see chrome_session),
+    then the rest after it (see chrome_due_in). After a round that failed, the next starts in a minute; after two in a
+    row, after the usual rest. (They're counted in the state: each round is a program of its own.)"""
     state = read_json(STATE_FILE)
     try:
         chrome_session(state, current_settings())
@@ -305,7 +279,7 @@ def run_round():
     except NeedsLogin as e:
         pause_for_login(e)
         return
-    except Exception as e:  # anything else too: launchd would restart a crashed bot at once, over and over, each time at the site
+    except Exception as e:  # anything else too: noted, and the next round tries again (not at once, over and over, at the site)
         state["rounds_failed"] = state.get("rounds_failed", 0) + 1
         again = "trying again in a minute" if state["rounds_failed"] == 1 else "trying again after the usual rest"
         if isinstance(e, (RuntimeError, OSError, PlaywrightError)):
@@ -316,53 +290,17 @@ def run_round():
     rest = ERROR_RETRY if state.get("rounds_failed") == 1 else random.uniform(*current_settings()["rest"])
     state["rest_until"] = time.time() + rest
     write_json(STATE_FILE, state)
-    report(state, current_settings(), "Resting between rounds (Chrome is closed)", chrome=False)
-
-
-def run_forever():
-    """--scheduled: launchd starts this and keeps it running. Between rounds Chrome is closed and this only naps (it
-    never keeps the Mac awake: a Mac that sleeps catches up when it wakes); a round starts when round_wanted says so.
-    Waits quietly while a new sign-in is needed."""
-    state = read_json(STATE_FILE)
-    state["craft_check_at"] = 0  # a restart (an update, say) looks at crafting straight away, not at the next 15-minute check
-    state["views_check_at"] = 0  # and at who's looked at your profile (the dashboard's all-time count)
-    state.pop("rest_until", None)  # (and starts with a round)
-    write_json(STATE_FILE, state)
-    while True:
-        keep_history()
-        if round_wanted():
-            run_round()
-            continue
-        state = peek_state()
-        if not state.get("needs_login") and COOKIES_FILE.exists():
-            report(state, current_settings(), "Resting between rounds (Chrome is closed)", chrome=False)
-        time.sleep(TICK)  # short naps, so a Mac waking from sleep catches up straight away (and a sign-in is noticed within seconds)
+    report(state, current_settings(), "Resting between rounds", chrome=False)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Plays BeetleBoy and BeetleCraft, and pokes and views people as picked on the dashboard, through a signed-in headless Chrome.")
-    parser.add_argument("--sign-in", action="store_true", help="set by the dashboard's sign-in page: signs in with the email, password (and two-factor code) it sends on stdin")
-    parser.add_argument("--dry-run", action="store_true", help="show who is due a poke or a view, without doing either")
-    parser.add_argument("--scheduled", action="store_true", help="set by launchd: runs forever, poking on schedule")
-    parser.add_argument("--watch-feed", action="store_true", help="record everyone in the activity feed; runs forever (launchd keeps it up)")
+    parser = argparse.ArgumentParser(description="One person's RemiDex bot, as the website (hosted/web.py) runs it in their folder (REMIDEX_HOME).")
     parser.add_argument("--round", action="store_true", help="set by the website's scheduler: one round now, then the rest after it")
+    parser.add_argument("--sign-in", action="store_true", help="set by the dashboard's sign-in: signs in with the email, password (and two-factor code) it sends on stdin")
     args = parser.parse_args()
-
-    if args.watch_feed:
-        watch_feed()
-    if args.scheduled:
-        run_forever()
     if args.round:
         run_round()
-        return
-    if args.sign_in:
+    elif args.sign_in:
         sign_in_from_dashboard()
-        return
-    try:
-        run_once(args)
-    except NeedsLogin as e:
-        pause_for_login(e)
-        sys.exit(1)
-    except (RuntimeError, OSError, PlaywrightError) as e:
-        log(f"Error: {e}")
-        sys.exit(1)
+    else:
+        parser.print_help()

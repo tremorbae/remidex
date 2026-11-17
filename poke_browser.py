@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
-"""Poke RemiliaNET users in short rounds, around the clock, without an API key: friends whose
-24h cooldown is up first, then everyone else it can find. After poking someone who isn't a friend it sends
-them a friend request (or accepts theirs), and never asks anyone who declined again. Also views the profile
-of everyone else who shows up in the activity feed (the site notifies them), and plays BeetleBoy: the daily
-cheese, the free beetle (every 2 hours) and the Cheeseman's junk as soon as each is ready, then every hunt the cheese allows,
-and crafts its way up to rarer beetles in BeetleCraft.
+"""One person's RemiDex bot, as the website runs it (see hosted/web.py), in their folder (REMIDEX_HOME): it plays
+BeetleBoy (the daily cheese, the free beetle, the Cheeseman's junk and every hunt the cheese allows) and crafts toward
+what's picked on the dashboard in BeetleCraft, and pokes, friends and views people as picked there. Each round drives
+Playwright's own headless Chromium, signed in to remilia.net, for a few minutes, with the same requests the website
+makes; between rounds the browser is closed.
 
-Drives Playwright's own headless Chromium (never your Google Chrome), signed in to
-remilia.net in its own profile. launchd keeps it running; every 20-30 minutes it opens
-the browser for a few minutes: whatever's due, a batch of pokes a few seconds apart,
-and views of whoever the feed has shown, with the same requests the website makes.
-In between, the browser is closed. Opening the page regularly also keeps the website's
-sign-in fresh. Runs next to an always-on --watch-feed listener (see install_browser.sh).
-
-    python3 poke_browser.py --sign-in     sign in (the dashboard's sign-in page runs this: see browser.sign_in_from_dashboard)
-    python3 poke_browser.py --dry-run     show who is due a poke or a view, without doing either
-    python3 poke_browser.py               poke the next person now, and view everyone who is due
-    python3 poke_browser.py --watch-feed  record everyone in the activity feed (runs forever)
+    python3 poke_browser.py --round     one round now (the website's scheduler starts these)
+    python3 poke_browser.py --sign-in   sign in (the dashboard's sign-in runs this: see browser.sign_in_from_dashboard)
 """
 # The bot lives in the remidex/ package; this file is how you run it, and keeps the names dashboard.py and the tests use.
 
@@ -26,7 +16,6 @@ from remidex.core import (  # noqa: F401
     FEED_US_FILE,
     GAME_FILE,
     HAMMERS,
-    HOSTED,
     JUNK_CUBE_CRAFT,
     KEY,
     LOG_FILE,
@@ -54,9 +43,7 @@ from remidex.core import (  # noqa: F401
 from remidex.settings import (  # noqa: F401
     BEETLE_SETTINGS,
     SOCIAL_SETTINGS,
-    _ALERTED,
     _SETTINGS,
-    alert,
     current_settings,
     load_settings,
     valid_steps,
@@ -106,7 +93,6 @@ from remidex.recipes import (  # noqa: F401
 from remidex.state import (  # noqa: F401
     LEVELS_FILE,
     quest_title,
-    streak_watch,
 )
 from remidex.social import (  # noqa: F401
     ACHIEVEMENT_LIST_FILE,
