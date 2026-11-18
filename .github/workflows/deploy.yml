@@ -1,0 +1,25 @@
+# Every push to main: run the tests, then deploy the website (remidex.xyz) with Render's deploy hook. A failing test
+# means no deploy. The hook's address is a secret, RENDER_DEPLOY_HOOK_URL (this repo's Settings > Secrets and
+# variables > Actions); it's on the Render service's Settings page. (Render can't deploy on its own here: the service
+# was made from the repo's public address, without a GitHub connection.)
+name: Test and deploy
+on:
+  push:
+    branches: [main]
+concurrency:
+  group: deploy  # (one at a time, in order)
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: python3 tests/run.py
+      - name: Deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::error::The RENDER_DEPLOY_HOOK_URL secret isn't set, so nothing was deployed."; exit 1; fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Deploy started on Render."
