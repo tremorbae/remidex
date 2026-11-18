@@ -384,6 +384,34 @@ def proven_low_odds(label, seen=None):
     return bool(seen.get("low")) or seen.get("n", 0) >= PROVE_TRIES and seen["n"] - came > came
 
 
+def add_results(more_stats, more_removed):
+    """Adds recipe results from elsewhere (the old app's, from before the website) to everyone's: each recipe's tries and
+    what came out are added to the counts there are, and recipes the game said don't exist are taken out of the book
+    (see remove_recipe). Returns how many recipes' counts were added to."""
+    added = 0
+    with editing(CRAFT_STATS_FILE):
+        stats = read_json(CRAFT_STATS_FILE)
+        for label, more in (more_stats if isinstance(more_stats, dict) else {}).items():
+            if not (isinstance(more, dict) and type(more.get("n")) is int and more["n"] > 0):
+                continue
+            seen = stats.setdefault(label, {"n": 0, "outs": {}})
+            seen["n"] += more["n"]
+            for item, times in (more.get("outs") if isinstance(more.get("outs"), dict) else {}).items():
+                if type(times) is int:
+                    seen["outs"][item] = seen["outs"].get(item, 0) + times
+            if more.get("low") is True:
+                seen["low"] = True
+            added += 1
+        write_json(CRAFT_STATS_FILE, stats)
+    _STATS["checked"] = 0
+    gone = read_json(REMOVED_FILE).get("recipes") or {}
+    removed = (more_removed if isinstance(more_removed, dict) else {}).get("recipes")
+    for label, how in (removed if isinstance(removed, dict) else {}).items():
+        if label not in gone:
+            remove_recipe(label, how.get("tried") if isinstance(how, dict) else None)
+    return added
+
+
 def count_craft(stats, label, made):
     """Adds one try of a recipe to craft stats (made: the item that came out, None if the smash failed)."""
     seen = stats.setdefault(label, {"n": 0, "outs": {}})

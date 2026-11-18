@@ -40,7 +40,7 @@ os.environ.setdefault("REMIDEX_ADDRESS", "https://remidex.xyz")
 os.environ.pop("REMIDEX_HOME", None)  # (the website's own folder is DATA/site: see remidex/places.py)
 sys.path.insert(0, str(ROOT))
 import dashboard  # noqa: E402  (the website's logo and fonts, made as each dashboard makes them)
-from remidex import loop, social  # noqa: E402
+from remidex import loop, recipes, social  # noqa: E402
 from remidex.core import editing, log, read_json, write_json  # noqa: E402
 from remidex.places import SHARED_DIR, USERS_DIR, homes  # noqa: E402
 
@@ -601,6 +601,27 @@ class Handler(BaseHTTPRequestHandler):
             desks.using(home, -1)
 
 
+SEED_DIR = ROOT / "seed"  # recipe results from before the website (the old app's): added to everyone's once (see add_seed)
+SEEDED_FILE = SHARED_DIR / "seeded.json"  # fingerprints of the seed files already added
+
+
+def add_seed():
+    """Adds the recipe results in seed/ (craft_stats.json, removed_recipes.json) to everyone's shared ones, once: the
+    counts are added to what everyone's crafts have shown since (see recipes.add_results). A fingerprint of the files
+    keeps a restart from adding them again."""
+    files = [SEED_DIR / "craft_stats.json", SEED_DIR / "removed_recipes.json"]
+    if not any(f.exists() for f in files):
+        return
+    mark = hashlib.sha256(b"".join(f.read_bytes() if f.exists() else b"-" for f in files)).hexdigest()
+    done = read_json(SEEDED_FILE).get("added") or []
+    if mark in done:
+        return
+    had = len(read_json(recipes.CRAFT_STATS_FILE))
+    added = recipes.add_results(read_json(files[0]), read_json(files[1]))
+    write_json(SEEDED_FILE, {"added": [*done, mark]})
+    log(f"Website: added the recipe results from before the website ({added} recipes) to the {had} everyone's crafts had shown.")
+
+
 def drop_root():
     """Started as root (the server's disk belongs to root): the disk is handed to the remidex user, and everything runs
     as that user from here on."""
@@ -626,6 +647,7 @@ def main():
     drop_root()
     for folder in (DATA, USERS_DIR, SHARED_DIR, SIGNING_IN_DIR):
         folder.mkdir(parents=True, exist_ok=True)
+    add_seed()
     sessions = Sessions(SESSIONS_FILE)
     scheduler = Scheduler(rounds_most())
     scheduler.start()

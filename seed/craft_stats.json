@@ -1,0 +1,158 @@
+{
+ "@beetle_3 from @beetle_2 + @beetle_2": {
+  "n": 14,
+  "outs": {
+   "green": 10,
+   "ladybug": 1
+  }
+ },
+ "@beetle_5 from @beetle_4 + @beetle_4": {
+  "n": 3,
+  "outs": {
+   "goliath": 1
+  }
+ },
+ "@flower_2 from @beetle_2 + junk_cube_t1": {
+  "n": 2,
+  "outs": {
+   "daisy": 2
+  }
+ },
+ "@flower_3 from @beetle_3 + junk_cube_t1": {
+  "n": 3,
+  "outs": {
+   "milk_thistle": 2
+  }
+ },
+ "@flower_3 from @flower_2 + @flower_2": {
+  "n": 63,
+  "outs": {
+   "carnation": 2,
+   "daisy": 5,
+   "gallic_rose": 6,
+   "magnolia": 8,
+   "marigold": 7,
+   "milk_thistle": 6,
+   "petunia": 7,
+   "poppy": 5,
+   "snapdragon": 3,
+   "st_johns_wort": 7,
+   "sunflower": 6
+  }
+ },
+ "@flower_5 from @beetle_5 + junk_cube_t1": {
+  "n": 2,
+  "outs": {
+   "pincushion": 1
+  }
+ },
+ "@flower_5 from junk_cube_t2 + @flower_5": {
+  "n": 2,
+  "outs": {
+   "hellebore": 1,
+   "pincushion": 1
+  }
+ },
+ "black_lotus from gunpowder + moss + pinecone": {
+  "n": 1,
+  "outs": {
+   "black_lotus": 1
+  }
+ },
+ "hammer_t1 from junk_cube_t1 + junk_cube_t1": {
+  "n": 19,
+  "outs": {
+   "hammer_t1": 19
+  }
+ },
+ "hammer_t2 from hammer_t1 + junk_cube_t2 + pollen_common": {
+  "n": 1,
+  "outs": {
+   "hammer_t2": 1
+  }
+ },
+ "hammer_t3 from hammer_t2 + junk_cube_t2 + pollen_uncommon": {
+  "n": 1,
+  "outs": {
+   "hammer_t3": 1
+  }
+ },
+ "hammer_t4 from hammer_t3 + junk_cube_t2 + pollen_rare": {
+  "n": 1,
+  "outs": {
+   "hammer_t4": 1
+  }
+ },
+ "junk_cube_t1 from @junk + @junk": {
+  "n": 29,
+  "outs": {
+   "junk_cube_t1": 29
+  }
+ },
+ "junk_cube_t2 from junk_cube_t1 + junk_cube_t1 + junk_cube_t1": {
+  "n": 5,
+  "outs": {
+   "junk_cube_t2": 5
+  }
+ },
+ "monarch from nectar + ladybug": {
+  "n": 2,
+  "outs": {
+   "monarch": 2
+  }
+ },
+ "nectar or cattail from @beetle_3 + pollen_uncommon": {
+  "n": 25,
+  "outs": {
+   "cattail": 5,
+   "nectar": 3
+  }
+ },
+ "nectar or cattail from cucumber + pollen_uncommon": {
+  "low": true,
+  "n": 49,
+  "outs": {
+   "cattail": 7,
+   "nectar": 9
+  }
+ },
+ "pinecone or moss or gunpowder from @beetle_4 + pollen_rare": {
+  "low": true,
+  "n": 64,
+  "outs": {
+   "gunpowder": 2,
+   "moss": 2,
+   "pinecone": 1
+  }
+ },
+ "pollen_common from @flower_2 + @flower_2": {
+  "n": 1,
+  "outs": {
+   "pollen_common": 1
+  }
+ },
+ "pollen_rare from @flower_4 + @flower_4": {
+  "n": 1,
+  "outs": {
+   "pollen_rare": 1
+  }
+ },
+ "pollen_uncommon from @flower_3 + @flower_3": {
+  "n": 4,
+  "outs": {
+   "pollen_uncommon": 4
+  }
+ },
+ "pond from cattail + ladybug": {
+  "n": 1,
+  "outs": {
+   "pond": 1
+  }
+ },
+ "sabertooth_longhorn from pincushion + @beetle_5": {
+  "n": 1,
+  "outs": {
+   "sabertooth_longhorn": 1
+  }
+ }
+}

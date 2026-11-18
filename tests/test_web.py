@@ -209,6 +209,21 @@ status, headers, _ = ask("/api/sign-out", {}, cookie=me)
 ok(status == 200 and set_cookies(headers)["remidex"][0] == "" and ask("/api/status", cookie=me)[0] == 401 and home.is_dir(),
    "signing out ends RemiDex's sign-in here; your bot stays")
 ok((home / "cookies.json").exists(), "and so does its RemiliaNET sign-in")
+# ---- recipe results from before the website (seed/), added to everyone's once, on top of the website's own
+book = recipes.recipe_book()[0]["recipes"]
+tried, gone = recipes.recipe_label(book[10]), recipes.recipe_label(book[11])
+recipes.note_craft({}, None, tried, "x", {"beetle": "made_here"})  # (a craft on the website)
+web.SEED_DIR = web.DATA / "seed_test"
+web.SEED_DIR.mkdir()
+pb.write_json(web.SEED_DIR / "craft_stats.json", {tried: {"n": 5, "outs": {"made_before": 4}, "low": True}, "nonsense": {"n": "x"}})
+pb.write_json(web.SEED_DIR / "removed_recipes.json", {"recipes": {gone: {"at": 1.0, "tried": "Smash this + that"}}})
+web.add_seed()
+web.add_seed()  # (a restart: not added twice)
+seen = pb.read_json(recipes.CRAFT_STATS_FILE)[tried]
+ok(seen["n"] == 6 and seen["outs"] == {"made_here": 1, "made_before": 4} and seen["low"] is True, f"added to the website's own counts, once ({seen})")
+ok("nonsense" not in pb.read_json(recipes.CRAFT_STATS_FILE), "anything that isn't a recipe's counts is left out")
+ok(gone in pb.read_json(recipes.REMOVED_FILE)["recipes"] and gone not in map(recipes.recipe_label, recipes.recipe_book()[0]["recipes"]),
+   "and recipes the game said don't exist are out of the book")
 web.desks.stop_all()
 server.shutdown()
 ok.done()
