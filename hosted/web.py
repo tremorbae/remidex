@@ -52,6 +52,9 @@ SCHEDULER_FILE = dashboard.SCHEDULER_FILE  # the scheduler says it's there (each
 COOKIE, PENDING = "remidex", "remidex_signin"  # RemiDex's sign-in; a sign-in under way (before it has worked)
 SESSION_FOR = 30 * 86400  # unused this long, a RemiDex sign-in ends
 HANDLE = re.compile(r"^[a-z0-9_]{1,40}$")  # a RemiliaNET handle, as a folder name
+# Invite-only: the RemiliaNET handles that may use RemiDex (comma-separated; "*" lets anyone in). Anyone else is turned
+# away before typing a password, and isn't let in (nor their bot run) even with an old RemiDex sign-in.
+INVITES = {h.strip().lstrip("~").lower() for h in (os.environ.get("REMIDEX_INVITES") or "").split(",") if h.strip()}
 TICK = 2  # seconds between the scheduler's looks: how soon a change on someone's dashboard starts a round
 DESK_IDLE = 10 * 60  # a dashboard nobody has asked anything of for this long is stopped (it starts again on the next visit)
 DESK_START = 25  # how long a dashboard gets to start (seconds)
@@ -263,7 +266,7 @@ class Scheduler(threading.Thread):
             for home in everyone[self.turn:] + everyone[:self.turn]:  # (everyone gets to go first in turn)
                 if len(self.rounds) >= self.most:
                     break
-                if home in self.rounds or home in self.held:
+                if home in self.rounds or home in self.held or not invited(home.name):  # (not invited: no rounds)
                     continue
                 try:
                     wanted = loop.round_wanted(home)
@@ -297,6 +300,11 @@ class SignIn:
 
 sessions, desks, scheduler = None, Desks(), None
 signins, signins_lock, started_from = {}, threading.Lock(), {}  # pending token -> SignIn; address -> [when each sign-in started]
+
+
+def invited(handle):
+    """Whether this RemiliaNET handle may use RemiDex (see INVITES)."""
+    return "*" in INVITES or str(handle or "").strip().lstrip("~").lower() in INVITES
 
 
 def signed_in(home):
@@ -388,7 +396,7 @@ class Handler(BaseHTTPRequestHandler):
         """(RemiDex sign-in token, the person's folder), or (None, None)."""
         token = self.cookies().get(COOKIE)
         handle = sessions.who(token)
-        home = USERS_DIR / handle if handle else None
+        home = USERS_DIR / handle if handle and invited(handle) else None  # (not invited any more: signed out)
         return (token, home) if home and home.is_dir() else (None, None)
 
     def our_host(self):
@@ -458,6 +466,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.asset(path)
         if path == "/sign-in":
             return self.go_to("/") if signed_in(home) else self.answer(200, sign_in_page(), "text/html; charset=utf-8")
+        if path == "/api/invited" and self.command == "POST":
+            return self.check_invite()
         if path.startswith("/api/sign-in"):
             return self.sign_in(path, home)
         if path == "/api/sign-out":
@@ -499,6 +509,12 @@ class Handler(BaseHTTPRequestHandler):
                     mine = signins.pop(pending, None) is run  # (two asking at once: only one brings it in)
                 if not mine:
                     return self.answer_json({"signed_in": signed_in(home), "running": True, "step": None, "error": None, "attempt": said.get("attempt"), "hue": 204})
+                if not invited(said["handle"]):  # (someone not on the list got this far: their sign-in isn't kept)
+                    desks.stop(run.home)
+                    shutil.rmtree(run.home, ignore_errors=True)
+                    log(f"Website: turned away ~{said['handle']} (not invited); their sign-in was deleted.")
+                    return self.answer_json({**said, "signed_in": False, "running": False, "error": "RemiDex is invite-only right now, and that account isn't on the list"},
+                                            cookies=[self.cookie(PENDING, "", 0)])
                 welcomed = welcome(run, said["handle"])
                 if welcomed is None:
                     return self.answer_json({**said, "signed_in": False, "running": False, "error": "RemiliaNET's handle for you isn't one RemiDex can use"})
@@ -514,6 +530,12 @@ class Handler(BaseHTTPRequestHandler):
             status, said = self.ask_desk(run.home, "POST", path, body)
             return self.answer_json(said, status) if status else self.answer(503, b"Try again in a minute")
         if run is None:
+            try:
+                asked = json.loads(body or b"{}")
+            except ValueError:
+                asked = {}
+            if not (isinstance(asked, dict) and invited(asked.get("handle"))):
+                return self.answer(403, b"RemiDex is invite-only right now")
             address = self.address()
             with signins_lock:
                 recent = [t for t in started_from.get(address, []) if time.time() - t < SIGN_INS_PER_ADDRESS[1]]
@@ -528,6 +550,14 @@ class Handler(BaseHTTPRequestHandler):
         if not status:
             return self.answer(503, b"Try again in a minute")
         return self.answer_json(said, status, cookies=[self.cookie(PENDING, pending, SIGN_IN_KEPT)])
+
+    def check_invite(self):
+        """POST /api/invited {"handle"}: whether that handle may sign in (the sign-in page asks before the password)."""
+        try:
+            asked = json.loads(self.body() or b"{}")
+        except ValueError:
+            asked = {}
+        return self.answer_json({"invited": isinstance(asked, dict) and invited(asked.get("handle"))})
 
     def ask_desk(self, home, method, path, body=None):
         """One question for home's dashboard, answered there: (status, its answer as JSON, or {}); (0, {}) if it can't be asked."""
@@ -661,7 +691,8 @@ def main():
         desks.stop_all()
         os._exit(0)
     signal.signal(signal.SIGTERM, leave)
-    log(f"Website: RemiDex on port {PORT} for {', '.join(sorted(HOSTS))}; {scheduler.most} rounds at once; {len(homes())} people.")
+    log(f"Website: RemiDex on port {PORT} for {', '.join(sorted(HOSTS))}; {scheduler.most} rounds at once; {len(homes())} people; "
+        + ("open to anyone." if "*" in INVITES else f"invite-only: {', '.join(sorted(INVITES)) or 'nobody'}."))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

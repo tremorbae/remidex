@@ -75,13 +75,21 @@
 <body>
   <main class="card">
     <div class="header"><span>登录</span><span>Sign in</span></div>
-    <form id="form" autocomplete="on">
+    <form id="handleForm" autocomplete="on">
+      <img class="logo" src="/logo.svg" alt="RemiDex" width="150" height="40">
+      <p class="lead">Plays BeetleBoy and BeetleCraft on RemiliaNET for you. It's invite-only for now: start with your RemiliaNET handle.</p>
+      <label>RemiliaNET handle<input id="handle" name="handle" type="text" placeholder="~yourname" spellcheck="false" autocapitalize="off" autocomplete="nickname" required autofocus></label>
+      <button id="next" type="submit"><span class="spin" aria-hidden="true"></span><span>CONTINUE</span></button>
+      <p class="note" id="handleNote" role="status" aria-live="polite">Not made by Remilia.</p>
+    </form>
+    <form id="form" autocomplete="on" hidden>
       <img class="logo" src="/logo.svg" alt="RemiDex" width="150" height="40">
       <p class="lead">Plays BeetleBoy and BeetleCraft on RemiliaNET for you. Sign in with your RemiliaNET account to start your own.</p>
-      <label>Email<input id="email" name="username" type="text" inputmode="email" autocomplete="username" spellcheck="false" autocapitalize="off" required autofocus></label>
+      <label>Email<input id="email" name="username" type="text" inputmode="email" autocomplete="username" spellcheck="false" autocapitalize="off" required></label>
       <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required></label>
       <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span id="goText">SIGN IN</span></button>
       <p class="note" id="note" role="status" aria-live="polite"></p>
+      <button class="plain" id="notMe" type="button" hidden></button>
     </form>
     <form id="codeForm" autocomplete="off" hidden>
       <img class="logo" src="/logo.svg" alt="RemiDex" width="150" height="40">
@@ -97,16 +105,21 @@ const $ = id => document.getElementById(id);
 const KEY = "remidexSignIn";  // which sign-in this tab started: a page only shows its own sign-in's errors
 const mine = () => { try { return sessionStorage.getItem(KEY); } catch { return null; } };
 const remember = attempt => { try { attempt == null ? sessionStorage.removeItem(KEY) : sessionStorage.setItem(KEY, String(attempt)); } catch {} };
+const HANDLE_KEY = "remidexHandle";  // the invited handle this tab is signing in as (asked first: see check_invite)
+let handle = (() => { try { return sessionStorage.getItem(HANDLE_KEY); } catch { return null; } })();
+const keepHandle = h => { handle = h; try { h ? sessionStorage.setItem(HANDLE_KEY, h) : sessionStorage.removeItem(HANDLE_KEY); } catch {} };
 let state = {}, timer = 0, sending = false, stopping = false, ownError = null, asked = null, lastError = null;  // asked: the code step shown last
 
 function show(s) {  // how it's going (GET /api/sign-in): {signed_in, running, step, error, attempt, hue}
   state = s;
-  if (s.signed_in) { remember(null); location.replace("/"); return; }  // signed in: on to the dashboard
+  if (s.signed_in) { remember(null); keepHandle(null); location.replace("/"); return; }  // signed in: on to the dashboard
   if (typeof s.hue === "number") document.documentElement.style.setProperty("--h", s.hue);
   if (!s.running) stopping = false;
   const codeStep = s.running && !stopping && (s.step === "code" || s.step === "checking");
   if (asked && !codeStep) ownError = null;  // (what the code box said doesn't carry over)
-  $("form").hidden = codeStep; $("codeForm").hidden = !codeStep;
+  const askHandle = !codeStep && !handle && !s.running && !sending;  // invite-only: the handle first, then the password
+  $("handleForm").hidden = !askHandle; $("form").hidden = codeStep || askHandle; $("codeForm").hidden = !codeStep;
+  $("notMe").hidden = !handle; $("notMe").textContent = handle ? `Not ~${handle}?` : "";
   if (codeStep) {
     const checking = s.step === "checking" || sending;
     $("code").disabled = $("verify").disabled = $("restart").disabled = checking;
@@ -122,6 +135,7 @@ function show(s) {  // how it's going (GET /api/sign-in): {signed_in, running, s
   asked = null;
   const working = (s.running || sending) && !stopping, ours = s.attempt != null && String(s.attempt) === mine();
   const error = working || stopping ? null : ownError || (ours ? s.error : null);
+  if (!working && !stopping && ours && s.error) ownError = s.error;  // (kept until the next try: the next look may not know this sign-in any more)
   $("go").disabled = $("email").disabled = $("password").disabled = working || stopping;
   $("go").classList.toggle("working", working || stopping);
   $("goText").textContent = stopping ? "STOPPING…" : working ? "SIGNING IN…" : "SIGN IN";
@@ -144,6 +158,7 @@ async function send(path, body) {
   return r.json();
 }
 const sendError = err => err.message === "Failed to fetch" ? "RemiDex isn't answering. Try again in a minute."
+  : err.message === "HTTP 403" ? "RemiDex is invite-only right now"
   : err.message === "HTTP 429" ? "Too many sign-ins from here. Try again in a few minutes"  // (the website, guarding RemiliaNET's accounts)
   : err.message === "HTTP 503" ? "RemiDex is busy signing other people in. Try again in a minute"
   : `RemiDex didn't take it (${err.message})`;
@@ -154,13 +169,29 @@ $("form").onsubmit = async e => {
   if (sending || state.running || !email || !password) return;
   ownError = null; sending = true; show(state);
   try {
-    remember((await send("/api/sign-in", {email, password})).attempt);
+    remember((await send("/api/sign-in", {email, password, handle})).attempt);
     $("password").value = "";
   } catch (err) {
     if (err.message !== "busy") ownError = sendError(err);  // (busy: signed in already, or one's under way: check says which)
   }
   sending = false; check();
 };
+
+$("handleForm").onsubmit = async e => {
+  e.preventDefault();
+  const h = $("handle").value.trim().replace(/^~/, ""), note = $("handleNote");
+  if (!h || sending) return;
+  sending = true; $("next").disabled = true; $("next").classList.add("working"); note.classList.remove("bad"); note.textContent = "Checking the invite list.";
+  let ok = false;
+  try { ok = (await send("/api/invited", {handle: h})).invited === true; } catch (err) { note.textContent = sendError(err); note.classList.add("bad"); }
+  if (ok) keepHandle(h);
+  else if (!note.classList.contains("bad")) { note.textContent = `RemiDex is invite-only right now, and ~${h} isn't on the list.`; note.classList.add("bad"); }
+  sending = false; $("next").disabled = false; $("next").classList.remove("working");
+  show(state);
+  if (ok) $("email").focus();
+};
+
+$("notMe").onclick = () => { keepHandle(null); ownError = null; show(state); $("handle").focus(); };
 
 $("codeForm").onsubmit = async e => {
   e.preventDefault();

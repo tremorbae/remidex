@@ -17,6 +17,7 @@ from remidex import loop, recipes, social  # noqa: E402
 DATA = web.DATA
 web.DESK_COMMAND = [sys.executable, str(support.ROOT / "tests" / "offline.py"), str(support.ROOT / "dashboard.py")]
 web.sessions, web.scheduler = web.Sessions(web.SESSIONS_FILE), web.Scheduler(1)
+web.INVITES = {"tester", "other_one", "third"}  # (invite-only: these, and nobody else)
 for folder in (web.USERS_DIR, web.SHARED_DIR, web.SIGNING_IN_DIR):
     folder.mkdir(parents=True, exist_ok=True)
 server = web.ThreadingHTTPServer(("127.0.0.1", 0), web.Handler)
@@ -92,7 +93,7 @@ web.Handler.ask_desk = lambda handler, *asked: fake(*asked)
 def sign_in(handle, address="203.0.113.7"):
     """A whole sign-in as the page goes through it: returns the RemiDex cookie it ends with ("remidex=..."), or None."""
     fake.handle, fake.polls = handle, 0
-    status, headers, body = ask("/api/sign-in", {"email": "me@example.com", "password": "pw"}, address=address)
+    status, headers, body = ask("/api/sign-in", {"email": "me@example.com", "password": "pw", "handle": handle}, address=address)
     pending = set_cookies(headers).get("remidex_signin", ("",))[0]
     if status != 200:
         return None
@@ -111,7 +112,7 @@ ok(not list(web.SIGNING_IN_DIR.iterdir()), "and the sign-in's own folder is gone
 saved = pb.read_json(web.SESSIONS_FILE)
 ok(len(saved) == 1 and me.split("=", 1)[1] not in json.dumps(saved) and list(saved.values())[0]["handle"] == "tester", "RemiDex's own sign-in is kept only as a hash")
 fake.polls = 0
-status, headers, _ = ask("/api/sign-in", {"email": "me@example.com", "password": "pw"}, address="198.51.100.1")
+status, headers, _ = ask("/api/sign-in", {"email": "me@example.com", "password": "pw", "handle": "tester"}, address="198.51.100.1")
 rest = set_cookies(headers)["remidex_signin"][1]
 ok("HttpOnly" in rest and "Secure" in rest and "SameSite=Lax" in rest, f"its cookies can't be read by pages, only go over HTTPS, and stay on this site ({rest.strip()})")
 with web.signins_lock:
@@ -148,16 +149,33 @@ state = pb.read_json(home / "state.json")
 ok(me and "needs_login" not in state and state["friends"] == ["a"] and pb.read_json(home / "overrides.json")["social"]["pokes"] is True,
    "signed in again: back in, with their history and switches as they were")
 
+# ---- invite-only: anyone else is turned away before the password, and isn't kept if they get past that
+invite = lambda h: json.loads(ask("/api/invited", {"handle": h})[2])["invited"]  # noqa: E731
+ok(invite("~Tester") is True and invite("stranger") is False and invite("") is False, "the page can ask whether a handle is invited")
+web.started_from.clear()
+ok(ask("/api/sign-in", {"email": "s@example.com", "password": "pw", "handle": "stranger"}, address="192.0.2.77")[0] == 403
+   and ask("/api/sign-in", {"email": "s@example.com", "password": "pw"}, address="192.0.2.77")[0] == 403, "no sign-in starts for a handle that isn't invited, or none at all")
+before = set(web.SIGNING_IN_DIR.iterdir())
+fake.handle, fake.polls = "stranger", 0  # (said they were ~tester, but RemiliaNET says otherwise)
+status, headers, _ = ask("/api/sign-in", {"email": "s@example.com", "password": "pw", "handle": "tester"}, address="192.0.2.78")
+pending = set_cookies(headers)["remidex_signin"][0]
+for _ in range(3):
+    said = json.loads(ask("/api/sign-in", cookie=f"remidex_signin={pending}")[2])
+    if said.get("error") or said.get("signed_in"):
+        break
+ok(not said["signed_in"] and "invite-only" in said["error"] and not (web.USERS_DIR / "stranger").exists() and set(web.SIGNING_IN_DIR.iterdir()) <= before,
+   f"one who gets that far anyway isn't let in, and their sign-in isn't kept ({said.get('error')})")
+
 # ---- limits: RemiliaNET's accounts mustn't be guessed at through here
 web.started_from.clear()
 codes = []
 for n in range(8):
     fake.polls = 0
-    codes.append(ask("/api/sign-in", {"email": f"x{n}@example.com", "password": "pw"}, address="203.0.113.99")[0])
+    codes.append(ask("/api/sign-in", {"email": f"x{n}@example.com", "password": "pw", "handle": "tester"}, address="203.0.113.99")[0])
     with web.signins_lock:
         web.signins.clear()
 ok(codes[:6] == [200] * 6 and codes[6:] == [429, 429], f"six sign-ins from one address in a while, then no more ({codes})")
-codes = [ask("/api/sign-in", {"email": "a@b.c", "password": "pw"}, address=f"198.51.100.{n}")[0] for n in range(10, 10 + web.SIGN_INS_MOST + 1)]
+codes = [ask("/api/sign-in", {"email": "a@b.c", "password": "pw", "handle": "tester"}, address=f"198.51.100.{n}")[0] for n in range(10, 10 + web.SIGN_INS_MOST + 1)]
 ok(codes[-1] == 503 and set(codes[:-1]) == {200}, f"and only {web.SIGN_INS_MOST} at once ({codes})")
 with web.signins_lock:
     web.signins.clear()
@@ -185,6 +203,14 @@ ok(pb.read_json(web.SCHEDULER_FILE).get("most") == 1, "and says it's there, for 
 web.scheduler.hold(home, False)
 web.scheduler.stop_all()
 ok(set(marks.read_text().split()) <= {str(home), str(third)}, "each round ran in its own person's folder")
+web.INVITES.discard("third")
+pb.write_json(third / "state.json", {"handle": "third", "next_slot_at": 0})
+marks.write_text("")
+web.scheduler.look()
+ok(not web.scheduler.running(third), "someone taken off the invite list gets no more rounds")
+web.scheduler.stop_all()
+web.INVITES.discard("other_one")
+ok(ask("/api/status", cookie=them)[0] == 401, "and can't get in with the RemiDex sign-in they had")
 
 # ---- shared by everyone: recipe results and the activity feed; news about someone goes to them only
 ok(recipes.CRAFT_STATS_FILE.parent == web.SHARED_DIR and recipes.REMOVED_FILE.parent == web.SHARED_DIR, "recipe results are kept for everyone")
