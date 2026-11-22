@@ -1048,6 +1048,12 @@ def status():
     now = time.time()
     state = bot.read_json(bot.STATE_FILE)
     settings = bot.load_settings()
+    if not settings.get("layer3") and state.get("handle"):
+        poke_due = state.get("next_slot_at", 0)
+        if poke_due > now + 300:
+            state["next_slot_at"] = now
+            state.pop("rest_until", None)
+            bot.write_json(bot.STATE_FILE, state)
 
     look = bot.read_json(bot.DASH_DIR / "look.json")
     pics = set(os.listdir(bot.PEOPLE_PICS)) if bot.PEOPLE_PICS.is_dir() else set()
@@ -1545,6 +1551,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(400)
                 return
             overrides.setdefault(SWITCHES[action], {})[action] = auto
+            if action in ("pokes", "friend_requests") and auto:
+                with bot.editing(bot.STATE_FILE):
+                    st = bot.read_json(bot.STATE_FILE)
+                    st.pop("rest_until", None)
+                    st["next_slot_at"] = min(st.get("next_slot_at", 0), time.time())
+                    bot.write_json(bot.STATE_FILE, st)
         elif self.path == "/api/hammers":
             order, limits, timing, off = request.get("order"), request.get("limits"), request.get("timing", True), request.get("off", [])
             if (not isinstance(order, list) or sorted(map(str, order)) != sorted(bot.HAMMERS) or not isinstance(limits, dict)

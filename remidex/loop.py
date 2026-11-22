@@ -206,6 +206,10 @@ def chrome_session(state, settings):
             apply_profile_edit(site, state)
         if claims_waiting():
             claim_now(site, state)
+        if not settings.get("layer3") and state.get("next_slot_at", 0) > time.time() + 300:
+            state["next_slot_at"] = time.time()
+            state.pop("rest_until", None)
+            write_json(STATE_FILE, state)
         while True:
             keep_history()
             settings = current_settings()
@@ -250,6 +254,8 @@ def chrome_session(state, settings):
 
 def chrome_due_in(state, settings):
     """Seconds until the next round: when the first thing is due, but not before the rest after the last round is over."""
+    if not settings.get("layer3"):
+        return min(next_tasks(state, settings).values()) - time.time()
     return max(min(next_tasks(state, settings).values()), state.get("rest_until", 0)) - time.time()
 
 
