@@ -60,6 +60,7 @@ HANDLE = re.compile(r"^[a-z0-9_]{1,40}$")  # a RemiliaNET handle, as a folder na
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Neon connection string
 INVITE_REFRESH = int(os.environ.get("REMIDEX_INVITE_REFRESH") or 60)  # seconds between Neon re-fetches
 ADMINS = {h.strip().lstrip("~").lower() for h in (os.environ.get("REMIDEX_ADMINS") or os.environ.get("REMIDEX_INVITES") or "").split(",") if h.strip() and h.strip() != "*"}  # who can manage invites
+ADMIN_CODE = (os.environ.get("REMIDEX_ADMIN_CODE") or "").strip().upper()
 
 _invites_lock = threading.Lock()
 INVITES = set()  # the invite cache (env + Neon); mutated in place
@@ -140,6 +141,7 @@ def load_invites_from_db():
 def refresh_invites():
     """Re-sync the invite cache from Neon (called on startup and periodically)."""
     db_inv = load_invites_from_db()
+    new_admin_codes = {}
     with _invites_lock:
         INVITES.clear()
         INVITE_DETAILS.clear()
@@ -151,12 +153,48 @@ def refresh_invites():
             for h, info in db_inv.items():
                 if info.get("code"):
                     INVITE_CODES[info["code"].upper()] = h
-            for h in env_set:
-                INVITE_DETAILS.setdefault(h, {"code": None})
         else:
             INVITES.update(env_set)
-            for h in env_set:
-                INVITE_DETAILS.setdefault(h, {"code": None})
+
+        for h in env_set:
+            INVITE_DETAILS.setdefault(h, {"code": None})
+
+        # Ensure every admin has an invite code
+        for adm in sorted(ADMINS):
+            if adm not in INVITES:
+                continue
+            curr_code = (INVITE_DETAILS.get(adm) or {}).get("code")
+            if ADMIN_CODE:
+                if curr_code != ADMIN_CODE:
+                    INVITE_DETAILS[adm] = {"code": ADMIN_CODE}
+                    INVITE_CODES[ADMIN_CODE] = adm
+                    new_admin_codes[adm] = ADMIN_CODE
+            elif not curr_code:
+                alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+                code = f"REMI-{''.join(secrets.choice(alphabet) for _ in range(6))}"
+                INVITE_DETAILS[adm] = {"code": code}
+                INVITE_CODES[code.upper()] = adm
+                new_admin_codes[adm] = code
+                log(f"Website: [ADMIN KEY] Permanent invite code for ~{adm}: {code} (set REMIDEX_ADMIN_CODE in Render to customize).")
+
+    if new_admin_codes:
+        db = db_connect()
+        if db:
+            try:
+                with db.cursor() as cur:
+                    for adm, code in new_admin_codes.items():
+                        cur.execute("""INSERT INTO invites (handle, code)
+                                       VALUES (%s, %s)
+                                       ON CONFLICT (handle) DO UPDATE SET code = EXCLUDED.code""",
+                                    (adm, code))
+                db.commit()
+            except Exception as e:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                log(f"Website: couldn't save admin code to Neon ({type(e).__name__}: {e}).")
+
     log(f"Website: invite list refreshed ({len(INVITES)} invited, {len(INVITE_CODES)} codes).")
 
 
@@ -775,7 +813,7 @@ class Handler(BaseHTTPRequestHandler):
             with _invites_lock:
                 info = INVITE_DETAILS.get(target_handle, {})
                 stored_code = (info.get("code") or "").strip().upper()
-            if stored_code and not is_admin(target_handle):
+            if stored_code:
                 provided_code = str(asked.get("code") or "").strip().upper()
                 if provided_code != stored_code:
                     return self.answer_json({"error": "Valid invite code required to sign in"}, status=403)
@@ -813,8 +851,6 @@ class Handler(BaseHTTPRequestHandler):
         if code:
             with _invites_lock:
                 target = INVITE_CODES.get(code)
-                if not target and code.lstrip("~").lower() in ADMINS:
-                    target = code.lstrip("~").lower()
             if target and invited(target):
                 return self.answer_json({"invited": True, "handle": target})
             return self.answer_json({"invited": False, "error": "Invalid invite code. Check with your admin."})
