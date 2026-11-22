@@ -65,7 +65,7 @@ class FormParser(HTMLParser):
             self.action = attrs_dict.get("action")
             self.method = attrs_dict.get("method", "POST").upper()
             self.form_id = attrs_dict.get("id")
-        elif tag == "input" and self._in_form:
+        elif tag in ("input", "button") and self._in_form:
             name = attrs_dict.get("name")
             if name:
                 self.inputs[name] = attrs_dict.get("value", "")
@@ -505,6 +505,11 @@ class Site:
         page_id = page_match.group(1) if page_match else ""
         if page_id.startswith("trusted-device") or "trusted-device" in page_html:
             self._step = {"page": "trusted-device.ftl", "error": None}
+            self._trust_context = {
+                "page_url": page_url,
+                "page_html": page_html,
+                "verifier": verifier,
+            }
             return None
 
         summary_match = re.search(r'["\']summary["\']\s*:\s*["\']([^"\']+)["\']', page_html)
@@ -516,9 +521,111 @@ class Site:
             self._step["error"] = err_msg
         return None
 
-    def answer_trust(self, yes):
-        """Answers RemiliaNET's 'Trust this device?'"""
+    def answer_trust(self, yes=False):
+        """Answers RemiliaNET's 'Trust this device?' and completes OIDC login."""
         self._trust_answers.append(("trust", yes))
+        if not getattr(self, "_trust_context", None):
+            self._step = None
+            return None
+        ctx = self._trust_context
+        page_url = ctx.get("page_url", SITE)
+        page_html = ctx.get("page_html", "")
+        verifier = ctx.get("verifier")
+
+        parser = FormParser()
+        parser.feed(page_html)
+        action_match = re.search(r'["\']loginAction["\']\s*:\s*["\']([^"\']+)["\']', page_html)
+        action = html.unescape(action_match.group(1).replace(r"\/", "/")) if action_match else parser.action
+
+        if not action:
+            self._step = None
+            return None
+
+        action_url = urllib.parse.urljoin(page_url, action)
+        post_data_dict = dict(parser.inputs)
+        if yes:
+            post_data_dict["trust"] = "true"
+        else:
+            post_data_dict["dontTrust"] = "true"
+            post_data_dict["trust"] = "false"
+
+        post_data = urllib.parse.urlencode(post_data_dict).encode("utf-8")
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": page_url,
+            "Origin": SITE,
+        }
+        cookie_hdr = self._cookie_header()
+        if cookie_hdr:
+            headers["Cookie"] = cookie_hdr
+
+        req = urllib.request.Request(action_url, data=post_data, headers=headers, method="POST")
+        opener = urllib.request.build_opener(NoRedirectHandler)
+        try:
+            resp = opener.open(req, timeout=30)
+            self._update_cookies(resp.headers)
+            status_code = resp.status
+            location = resp.headers.get("Location")
+            resp_html = resp.read().decode("utf-8", "replace")
+            resp_url = resp.geturl()
+        except urllib.error.HTTPError as e:
+            self._update_cookies(e.headers)
+            status_code = e.code
+            location = e.headers.get("Location")
+            resp_html = e.read().decode("utf-8", "replace")
+            resp_url = e.geturl()
+        except Exception as e:
+            return f"RemiDex couldn't complete sign-in ({e})"
+
+        redirect_hops = 0
+        while (location or status_code in (301, 302, 303, 307, 308)) and redirect_hops < 5:
+            dest_url = urllib.parse.urljoin(resp_url, location) if location else resp_url
+            parsed = urllib.parse.urlparse(dest_url)
+            auth_code = urllib.parse.parse_qs(parsed.query).get("code", [None])[0]
+            if auth_code and verifier:
+                err = self._exchange_token(auth_code, verifier)
+                if err:
+                    return err
+                self._step = None
+                self._otp_context = None
+                self._trust_context = None
+                return None
+            redirect_hops += 1
+            try:
+                get_headers = {"User-Agent": USER_AGENT, "Referer": resp_url}
+                cookie_hdr = self._cookie_header()
+                if cookie_hdr:
+                    get_headers["Cookie"] = cookie_hdr
+                get_req = urllib.request.Request(dest_url, headers=get_headers, method="GET")
+                resp = opener.open(get_req, timeout=30)
+                self._update_cookies(resp.headers)
+                status_code = resp.status
+                location = resp.headers.get("Location")
+                resp_html = resp.read().decode("utf-8", "replace")
+                resp_url = resp.geturl()
+            except urllib.error.HTTPError as e:
+                self._update_cookies(e.headers)
+                status_code = e.code
+                location = e.headers.get("Location")
+                resp_html = e.read().decode("utf-8", "replace")
+                resp_url = e.geturl()
+            except Exception as e:
+                return f"RemiDex couldn't complete sign-in ({e})"
+
+        if location or status_code in (301, 302, 303, 307, 308):
+            parsed = urllib.parse.urlparse(location or resp_url)
+            auth_code = urllib.parse.parse_qs(parsed.query).get("code", [None])[0]
+            if auth_code and verifier:
+                err = self._exchange_token(auth_code, verifier)
+                if err:
+                    return err
+                self._step = None
+                self._otp_context = None
+                self._trust_context = None
+                return None
+
+        self._step = None
         return None
 
     def finish_steps(self, ask_code):
@@ -683,6 +790,15 @@ class Site:
                 otp_action = html.unescape(otp_action_match.group(1).replace(r"\/", "/")) if otp_action_match else None
                 self._otp_context = {"action": otp_action, "verifier": verifier, "referer": page2_url}
                 self._step = {"page": "login-otp.ftl", "error": err_msg}
+                return self.finish_steps(ask_code)
+
+            if page_id.startswith("trusted-device") or "trusted-device" in page2_html:
+                self._step = {"page": "trusted-device.ftl", "error": None}
+                self._trust_context = {
+                    "page_url": page2_url,
+                    "page_html": page2_html,
+                    "verifier": verifier,
+                }
                 return self.finish_steps(ask_code)
 
             if err_msg:
