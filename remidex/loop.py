@@ -152,8 +152,20 @@ def schedule_next(state, settings, poked_at, last=False):
     if state.get("failures_in_a_row", 0) >= STOP_AFTER_FAILURES:
         log(f"{state['failures_in_a_row']} failed pokes in a row; no more until the next round.")
         last = True
+    if not settings.get("layer3"):
+        if poked_at is not None:
+            state["next_slot_at"] = poked_at + random.uniform(*settings["gap"])
+            write_json(STATE_FILE, state)
+            return False
+        now = time.time()
+        next_times = [t for t in state.get("next_poke_at", {}).values() if t > now]
+        earliest = min(next_times) if next_times else now + 60
+        state["next_slot_at"] = max(now + 15, min(earliest, now + 300))
+        write_json(STATE_FILE, state)
+        return True
     last = last or poked_at is None
-    state["next_slot_at"] = (poked_at or time.time()) + (settings["rest"][0] if last else random.uniform(*settings["gap"]))
+    rest = settings["rest"][0] if last else random.uniform(*settings["gap"])
+    state["next_slot_at"] = (poked_at or time.time()) + rest
     write_json(STATE_FILE, state)
     return last
 
@@ -202,12 +214,18 @@ def chrome_session(state, settings):
             edited = changed(OVERRIDES_FILE)  # something picked on the dashboard
             wanted = edited or someone_looking() or profile_edit_waiting() or chat_waiting() or claims_waiting()
             viewing = settings["view_profiles"] and state.get("handle") and not viewed
+            if LOOKING_FILE.exists() and not someone_looking():
+                log("App closed in browser; stopping bot round.")
+                break
             if not wanted and (now - opened >= SESSION_MAX or (min(tasks.values()) - now > CLOSE_WITHIN and not viewing)):
                 break  # the round's done: close the session
             if tasks["poke"] <= now:
                 report(state, settings, "Poking")
                 poked += 1
-                if schedule_next(state, settings, poke_next(site, state, settings), last=poked >= settings["batch"]):
+                poked_at = poke_next(site, state, settings)
+                batch_limit = settings.get("batch") if settings.get("layer3") else 0
+                is_last = (poked >= batch_limit) if batch_limit else (poked_at is None)
+                if schedule_next(state, settings, poked_at, last=is_last):
                     poked = 0  # (the round kept going for the dashboard: the next batch starts afresh)
                 site.save_cookies()
                 continue
@@ -255,6 +273,8 @@ def round_wanted(home):
     state = peek_state(where(STATE_FILE))
     if state.get("needs_login") or not where(COOKIES_FILE).exists():
         return False
+    if where(LOOKING_FILE).exists() and not someone_looking(where(LOOKING_FILE)):
+        return False  # app closed completely in browser: no rounds
     if changed(where(FEED_US_FILE)):  # something happened to you on RemiliaNET: look at it in the next round
         state = read_json(where(STATE_FILE))
         news_about_you(state)
@@ -284,7 +304,12 @@ def run_round():
         else:
             log(f"Error: something unexpected ({type(e).__name__}: {e}); {again}.")
             traceback.print_exc()  # (the details, for working out what happened)
-    rest = ERROR_RETRY if state.get("rounds_failed") == 1 else random.uniform(*current_settings()["rest"])
+    if state.get("rounds_failed") == 1:
+        rest = ERROR_RETRY
+    elif someone_looking():
+        rest = random.uniform(20, 45)  # app is open in browser: next round starts in 20-45s
+    else:
+        rest = random.uniform(*current_settings()["rest"])
     state["rest_until"] = time.time() + rest
     write_json(STATE_FILE, state)
     report(state, current_settings(), "Resting between rounds", chrome=False)

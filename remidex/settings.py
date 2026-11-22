@@ -12,7 +12,8 @@ BEETLE_SETTINGS = ("catchBeetle", "claimUBC", "junkFaucet", "beetleHunt")
 # one every 1–2 minutes, but with a browser open a few minutes in every half hour, not all day.)
 POKE_GAP = (4, 10)  # seconds from one poke to the next within a round: a random wait between these
 POKES_PER_SESSION = 20
-SESSION_REST = (20 * 60, 30 * 60)  # the rest after a round, with the browser closed: a random wait between these
+SESSION_REST = (20 * 60, 30 * 60)  # legacy batch rest
+LAYER_3 = False  # Layer 3 (batch limits and 20-30m rests) is removed: continuous poking for all due users
 HAMMER_LIMIT = 25  # a hammer smashes while its break chance is under this, unless its own limit is set on the dashboard
 def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
@@ -50,11 +51,13 @@ def load_settings(path=None):
     picked = overrides.get("hammers") if isinstance(overrides.get("hammers"), dict) else {}
     order = [h for h in picked.get("order") or [] if h in HAMMERS]
     limits = picked.get("limits") if isinstance(picked.get("limits"), dict) else {}
+    layer3 = overrides.get("layer3", LAYER_3)
     return {
         "friends_first": False,  # everyone due, in random order, rather than friends first
+        "layer3": layer3,
         "gap": POKE_GAP,
-        "batch": POKES_PER_SESSION,
-        "rest": SESSION_REST,
+        "batch": POKES_PER_SESSION if layer3 else 0,
+        "rest": SESSION_REST if layer3 else (30, 60),
         **{action: switch(action) for action in SOCIAL_SETTINGS},
         "beetleboy": {action: switch(action) for action in BEETLE_SETTINGS},
         "junk_cubes": switch("junk_cubes", False),

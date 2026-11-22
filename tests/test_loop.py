@@ -9,6 +9,7 @@ import support
 pb = support.load()
 ok = support.Checks()
 from remidex import loop, settings as settings_module  # noqa: E402
+settings_module.LAYER_3 = True
 tmp = Path(tempfile.mkdtemp())
 paths = {n: tmp / (n.lower() + ".json") for n in ("STATE_FILE", "OVERRIDES_FILE", "STATUS_FILE", "FEED_US_FILE", "LOOKING_FILE", "PROFILE_EDIT_FILE", "GAME_FILE", "COOKIES_FILE")}
 clock = {"t": 1_000_000.0}
@@ -97,6 +98,7 @@ hooks["wait"] = dashboard_change
 state = fresh_state()
 rel = round_events(state)
 hooks["wait"] = None
+paths["LOOKING_FILE"].unlink(missing_ok=True)
 pokes = at(rel, "poke")
 ok(rel[0][0] == "chrome opened" and rel[-1][0] == "chrome closed" and at(rel, "chrome opened") == [0], "one round: Chrome opens once and closes")
 ok(at(rel, "claims")[0] <= 2, "everything is checked once when Chrome opens")
@@ -126,6 +128,7 @@ def looking():
 hooks["wait"] = looking
 rel = round_events(fresh_state())
 hooks["wait"] = None
+paths["LOOKING_FILE"].unlink(missing_ok=True)
 pokes = at(rel, "poke")
 first, second = [t for t in pokes if t < 600], [t for t in pokes if t >= 600]
 ok(len(at(rel, "chrome opened")) == 1 and rel[-1][1] >= 1500 - 2 * pb.TICK, f"Chrome stays open while you're using the dashboard ({rel[-1][1]} s)")
