@@ -34,6 +34,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+ThreadingHTTPServer.request_queue_size = 128
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA = Path(os.environ.setdefault("REMIDEX_DATA", "/data"))
 os.environ.setdefault("REMIDEX_ADDRESS", "https://remidex.xyz")
@@ -57,7 +59,7 @@ HANDLE = re.compile(r"^[a-z0-9_]{1,40}$")  # a RemiliaNET handle, as a folder na
 # Invites come from REMIDEX_INVITES (static env var) and Neon (DATABASE_URL, refreshed periodically).
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Neon connection string
 INVITE_REFRESH = int(os.environ.get("REMIDEX_INVITE_REFRESH") or 60)  # seconds between Neon re-fetches
-ADMINS = {h.strip().lower() for h in (os.environ.get("REMIDEX_ADMINS") or "").split(",") if h.strip()}  # who can manage invites
+ADMINS = {h.strip().lstrip("~").lower() for h in (os.environ.get("REMIDEX_ADMINS") or os.environ.get("REMIDEX_INVITES") or "").split(",") if h.strip() and h.strip() != "*"}  # who can manage invites
 
 _invites_lock = threading.Lock()
 INVITES = set()  # the invite cache (env + Neon); mutated in place
@@ -777,21 +779,39 @@ class Handler(BaseHTTPRequestHandler):
         except RuntimeError:
             return self.answer(503, b"Your dashboard is starting. Try again in a moment.")
         desks.using(home, 1)
+        connection = None
+        answered = False
         try:
-            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=120)
-            connection.putrequest(self.command, self.path, skip_host=True, skip_accept_encoding=True)
-            connection.putheader("Host", f"127.0.0.1:{port}")
-            if self.headers.get("Origin"):
-                connection.putheader("Origin", f"http://127.0.0.1:{port}")  # (checked above: it's the site's own page)
-            for name in PASSED_ON:
-                if self.headers.get(name) is not None:
-                    connection.putheader(name, self.headers[name])
-            connection.endheaders()
-            left = int(self.headers.get("Content-Length") or 0)
-            while left > 0 and (chunk := self.rfile.read(min(left, 1 << 16))):
-                connection.send(chunk)
-                left -= len(chunk)
-            answer = connection.getresponse()
+            for attempt in range(4):
+                try:
+                    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+                    connection.putrequest(self.command, self.path, skip_host=True, skip_accept_encoding=True)
+                    connection.putheader("Host", f"127.0.0.1:{port}")
+                    if self.headers.get("Origin"):
+                        connection.putheader("Origin", f"http://127.0.0.1:{port}")  # (checked above: it's the site's own page)
+                    for name in PASSED_ON:
+                        if self.headers.get(name) is not None:
+                            connection.putheader(name, self.headers[name])
+                    connection.endheaders()
+                    left = int(self.headers.get("Content-Length") or 0)
+                    while left > 0 and (chunk := self.rfile.read(min(left, 1 << 16))):
+                        connection.send(chunk)
+                        left -= len(chunk)
+                    answer = connection.getresponse()
+                    break
+                except (ConnectionRefusedError, ConnectionResetError, http.client.CannotSendRequest, http.client.ResponseNotReady):
+                    if connection:
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        connection = None
+                    if attempt < 3:
+                        time.sleep(0.05 * (attempt + 1))
+                        continue
+                    return self.answer(503, b"Dashboard busy. Try again in a moment.")
+
+            answered = True
             self.send_response(answer.status, answer.reason)
             for name, value in answer.getheaders():
                 if name.lower() not in HOP and name.lower() not in ("server", "date"):
@@ -802,10 +822,20 @@ class Handler(BaseHTTPRequestHandler):
             while chunk := answer.read1(1 << 16):  # (as it comes: the live connection never ends while the page is open)
                 self.wfile.write(chunk)
                 self.wfile.flush()
-            connection.close()
-        except (OSError, http.client.HTTPException, ValueError):
-            pass  # (the page went away, or the dashboard did: the browser asks again)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # (client disconnected)
+        except Exception as e:
+            if not answered:
+                try:
+                    self.answer(502, f"Dashboard error: {type(e).__name__}".encode())
+                except Exception:
+                    pass
         finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
             desks.using(home, -1)
 
 
@@ -828,6 +858,35 @@ def add_seed():
     added = recipes.add_results(read_json(files[0]), read_json(files[1]))
     write_json(SEEDED_FILE, {"added": [*done, mark]})
     log(f"Website: added the recipe results from before the website ({added} recipes) to the {had} everyone's crafts had shown.")
+
+
+def warm_art_cache():
+    """Background thread to pre-fetch catalog item icons into SHARED_DIR / 'fan-art' so dashboard visits never wait."""
+    try:
+        shared_art = SHARED_DIR / "fan-art"
+        shared_art.mkdir(parents=True, exist_ok=True)
+        catalog_file = ROOT / "catalog.json"
+        if not catalog_file.exists():
+            return
+        catalog = json.loads(catalog_file.read_text()).get("items", {})
+        for item in catalog.values():
+            path = item.get("art")
+            if not path:
+                continue
+            name = path.rsplit("/", 1)[-1]
+            local = shared_art / name
+            if not local.exists():
+                url = f"https://raw.githubusercontent.com/sneedragon/beetleboy-advance/HEAD/{path}"
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": "remilianet-poke (personal script)"})
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        data = r.read()
+                    local.write_bytes(data)
+                except Exception:
+                    pass
+                time.sleep(0.02)
+    except Exception as e:
+        log(f"Website: art cache warming: {type(e).__name__}: {e}")
 
 
 def drop_root():
@@ -864,6 +923,7 @@ def main():
     threading.Thread(target=social.watch_feed, daemon=True).start()
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=_invite_refresh_loop, daemon=True).start()  # keep Neon invites fresh
+    threading.Thread(target=warm_art_cache, daemon=True).start()  # pre-fetch catalog item icons
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
 

@@ -3192,6 +3192,7 @@ loadMe(); setInterval(loadMe, 60000);  // your card's picture and name, as they 
 
 // Admin invite management
 let adminData = null;
+let adminTimer = null;
 async function checkAdmin() {
   try {
     const r = await fetch("/api/invites", {cache: "no-store"});
@@ -3201,6 +3202,10 @@ async function checkAdmin() {
       renderInvites();
     } else {
       $("adminBtn").hidden = true;
+      if (r.status === 403 && adminTimer) {
+        clearInterval(adminTimer);
+        adminTimer = null;
+      }
     }
   } catch {}
 }
@@ -3305,7 +3310,8 @@ $("inviteClose").onclick = () => $("inviteDialog").classList.remove("open");
 $("inviteAddBtn").onclick = addInvite;
 $("inviteInput").onkeydown = e => { if (e.key === "Enter") addInvite(); };
 
-checkAdmin(); setInterval(checkAdmin, 30000);
+checkAdmin();
+adminTimer = setInterval(checkAdmin, 30000);
 </script>
 </body>
 </html>

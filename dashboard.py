@@ -26,6 +26,8 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+ThreadingHTTPServer.request_queue_size = 128
+
 import poke_browser as bot
 import quests
 import store
@@ -112,17 +114,23 @@ def fetch_once(url, local):
     """The file kept at local, downloaded from url the first time. Returns its bytes, or None if unavailable."""
     if not local.exists():
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": bot.USER_AGENT}), timeout=20) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": bot.USER_AGENT}), timeout=4) as r:
                 data = r.read()
         except OSError:
             return None
         local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_bytes(data)
-    return local.read_bytes()
+        try:
+            local.write_bytes(data)
+        except OSError:
+            pass
+    try:
+        return local.read_bytes()
+    except OSError:
+        return None
 
 
 _live, _no_picture = {}, {}  # handle -> (when, their public profile or None); handle -> when their picture couldn't be had
-_live_lock, _picture_turns = threading.Lock(), threading.Semaphore(2)  # two pictures fetched from RemiliaNET at a time, at most
+_live_lock, _picture_turns = threading.Lock(), threading.Semaphore(8)  # up to 8 pictures fetched from RemiliaNET at a time
 
 
 def live_profile(handle):
@@ -134,7 +142,7 @@ def live_profile(handle):
         return hit[1]
     try:
         request = urllib.request.Request(f"{bot.SITE}/api/profile/~{urllib.parse.quote(handle, safe='')}", headers={"User-Agent": bot.USER_AGENT, "Accept": "application/json"})
-        with urllib.request.urlopen(request, timeout=10) as r:
+        with urllib.request.urlopen(request, timeout=4) as r:
             user = json.load(r).get("user")
     except (OSError, ValueError, AttributeError):
         user = None
@@ -159,8 +167,9 @@ def remilia_picture(full):
     """A profile picture from RemiliaNET, downloaded once and kept by its address (a new picture has a new address)."""
     if not full.startswith(PIC_SOURCES):
         return None
+    parent = (bot.SHARED_DIR / "rpic") if hasattr(bot, "SHARED_DIR") and bot.SHARED_DIR.exists() else (bot.DASH_DIR / "rpic")
     with _picture_turns:
-        return fetch_once(full, bot.DASH_DIR / "rpic" / hashlib.sha1(full.encode()).hexdigest()[:24])
+        return fetch_once(full, parent / hashlib.sha1(full.encode()).hexdigest()[:24])
 
 
 def person_picture(handle):
@@ -455,8 +464,22 @@ def remidex_icon():
 
 
 def fan_file(path, folder, base=FAN_ART):
-    """A file from the fan project (or a full URL, with base ""), fetched once into fan-art/<folder>. Returns its bytes or None."""
-    return fetch_once(base + path, bot.DASH_DIR / "fan-art" / folder / path.rsplit("/", 1)[1])
+    """A file from the fan project (or a full URL, with base ''), fetched once into fan-art/<folder>. Returns its bytes or None."""
+    target_name = path.rsplit("/", 1)[1]
+    shared = (bot.SHARED_DIR / "fan-art" / folder / target_name) if hasattr(bot, "SHARED_DIR") and bot.SHARED_DIR.exists() else None
+    if shared and shared.exists():
+        try:
+            return shared.read_bytes()
+        except OSError:
+            pass
+    shared_flat = (bot.SHARED_DIR / "fan-art" / target_name) if hasattr(bot, "SHARED_DIR") and bot.SHARED_DIR.exists() else None
+    if shared_flat and shared_flat.exists():
+        try:
+            return shared_flat.read_bytes()
+        except OSError:
+            pass
+    local = shared if shared else (bot.DASH_DIR / "fan-art" / folder / target_name)
+    return fetch_once(base + path, local)
 
 
 def image_type(data):
@@ -482,6 +505,9 @@ def item_art(key):
     own = bot.DASH_DIR / "icons" / f"{key}.png"
     if own.exists():
         return own.read_bytes(), "image/png"
+    shared = (bot.SHARED_DIR / "icons" / f"{key}.png") if hasattr(bot, "SHARED_DIR") and bot.SHARED_DIR.exists() else None
+    if shared and shared.exists():
+        return shared.read_bytes(), "image/png"
     path = (CATALOG.get(key) or {}).get("art") or EXTRA_ART.get(key)
     data = fan_file(path, "") if path else None
     return (data, image_type(data)) if data else None
