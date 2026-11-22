@@ -1,6 +1,8 @@
 """The bot's HTTP client session with RemiliaNET: makes API calls with saved sign-in cookies,
 and signs in via direct HTTP."""
 
+import base64
+import hashlib
 import json
 import queue
 import re
@@ -84,6 +86,13 @@ class FormParser(HTMLParser):
                 self.page_id = match.group(1)
 
 
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Prevents following redirects so we can intercept 302 Location containing authorization codes."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class Site:
     """An HTTP client session with remilia.net, with persistent cookies and sign-in."""
 
@@ -93,6 +102,7 @@ class Site:
         self.look = None
         self.page = None  # Mock page support for unit tests
         self._step = None
+        self._otp_context = None
         self._sent_codes = []
         self._trust_answers = []
         self.load_cookies()
@@ -152,6 +162,8 @@ class Site:
         cookie_hdr = self._cookie_header()
         if cookie_hdr:
             headers["Cookie"] = cookie_hdr
+        if "authToken" in self.cookies:
+            headers["Authorization"] = f"Bearer {self.cookies['authToken']}"
         data = None
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -220,7 +232,84 @@ class Site:
 
     def restore_sign_in(self):
         self.load_cookies()
+        if self.cookies.get("refreshToken"):
+            self.refresh_token()
         self.require_sign_in()
+
+    def refresh_token(self):
+        """Refreshes the authToken using the saved refreshToken."""
+        refresh_token = self.cookies.get("refreshToken")
+        if not refresh_token:
+            return False
+        token_url = f"{SITE}/oidc/realms/remilia/protocol/openid-connect/token"
+        data = urllib.parse.urlencode({
+            "grant_type": "refresh_token",
+            "client_id": "profile",
+            "refresh_token": refresh_token,
+        }).encode("utf-8")
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "Origin": SITE,
+        }
+        req = urllib.request.Request(token_url, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                self._update_cookies(resp.headers)
+                tokens = json.loads(resp.read().decode("utf-8", "replace"))
+                if tokens.get("access_token"):
+                    self.cookies["authToken"] = tokens["access_token"]
+                    if tokens.get("refresh_token"):
+                        self.cookies["refreshToken"] = tokens["refresh_token"]
+                    self.save_cookies()
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _exchange_token(self, auth_code, verifier):
+        """Exchanges an authorization code for an authToken via Keycloak OIDC."""
+        token_url = f"{SITE}/oidc/realms/remilia/protocol/openid-connect/token"
+        data = urllib.parse.urlencode({
+            "grant_type": "authorization_code",
+            "client_id": "profile",
+            "code": auth_code,
+            "redirect_uri": f"{SITE}/",
+            "code_verifier": verifier,
+        }).encode("utf-8")
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "Origin": SITE,
+        }
+        cookie_hdr = self._cookie_header()
+        if cookie_hdr:
+            headers["Cookie"] = cookie_hdr
+        req = urllib.request.Request(token_url, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                self._update_cookies(resp.headers)
+                raw = resp.read()
+                tokens = json.loads(raw.decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            self._update_cookies(e.headers)
+            raw = e.read()
+            tokens = json.loads(raw.decode("utf-8", "replace")) if raw else {}
+            return tokens.get("error_description") or tokens.get("error") or f"Token exchange failed (HTTP {e.code})"
+        except Exception as e:
+            return f"Token exchange error: {e}"
+
+        access_token = tokens.get("access_token")
+        if not access_token:
+            return "No access token returned by RemiliaNET"
+
+        self.cookies["authToken"] = access_token
+        if tokens.get("refresh_token"):
+            self.cookies["refreshToken"] = tokens["refresh_token"]
+        self.save_cookies()
+        return None
 
     def download(self, path):
         """Downloads a file from the site with session cookies."""
@@ -229,6 +318,8 @@ class Site:
         cookie_hdr = self._cookie_header()
         if cookie_hdr:
             headers["Cookie"] = cookie_hdr
+        if "authToken" in self.cookies:
+            headers["Authorization"] = f"Bearer {self.cookies['authToken']}"
         req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
@@ -270,6 +361,8 @@ class Site:
         cookie_hdr = self._cookie_header()
         if cookie_hdr:
             headers["Cookie"] = cookie_hdr
+        if "authToken" in self.cookies:
+            headers["Authorization"] = f"Bearer {self.cookies['authToken']}"
         req = urllib.request.Request(f"{SITE}/media/upload/", data=body, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
@@ -310,6 +403,57 @@ class Site:
     def send_code(self, code):
         """Sends a two-factor code."""
         self._sent_codes.append(code)
+        if not self._otp_context or not self._otp_context.get("action"):
+            return None
+        otp_action = self._otp_context["action"]
+        verifier = self._otp_context.get("verifier")
+        referer = self._otp_context.get("referer", SITE)
+        post_data = urllib.parse.urlencode({"otp": code}).encode("utf-8")
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": referer,
+            "Origin": SITE,
+        }
+        cookie_hdr = self._cookie_header()
+        if cookie_hdr:
+            headers["Cookie"] = cookie_hdr
+        req = urllib.request.Request(otp_action, data=post_data, headers=headers, method="POST")
+        opener = urllib.request.build_opener(NoRedirectHandler)
+        try:
+            resp = opener.open(req, timeout=30)
+            self._update_cookies(resp.headers)
+            status_code = resp.status
+            location = resp.headers.get("Location")
+            page_html = resp.read().decode("utf-8", "replace")
+            page_url = resp.geturl()
+        except urllib.error.HTTPError as e:
+            self._update_cookies(e.headers)
+            status_code = e.code
+            location = e.headers.get("Location")
+            page_html = e.read().decode("utf-8", "replace")
+            page_url = e.geturl()
+        except Exception as e:
+            return f"RemiDex couldn't send code to RemiliaNET ({e})"
+
+        if location or status_code in (301, 302, 303, 307, 308):
+            parsed = urllib.parse.urlparse(location or page_url)
+            auth_code = urllib.parse.parse_qs(parsed.query).get("code", [None])[0]
+            if auth_code and verifier:
+                err = self._exchange_token(auth_code, verifier)
+                if err:
+                    return err
+                self._step = None
+                self._otp_context = None
+                return None
+
+        summary_match = re.search(r'["\']summary["\']\s*:\s*["\']([^"\']+)["\']', page_html)
+        err_msg = summary_match.group(1) if summary_match else "Invalid authenticator code"
+        next_action_match = re.search(r'["\']loginAction["\']\s*:\s*["\']([^"\']+)["\']', page_html)
+        if next_action_match:
+            self._otp_context["action"] = next_action_match.group(1).replace(r"\/", "/")
+        if self._step:
+            self._step["error"] = err_msg
         return None
 
     def answer_trust(self, yes):
@@ -342,69 +486,118 @@ class Site:
         return "RemiliaNET's sign-in didn't finish. Try again in a minute"
 
     def http_login(self, email, password, ask_code=None):
-        """Performs standard HTTP OIDC/Keycloak authentication."""
+        """Performs standard HTTP OIDC/Keycloak authentication with PKCE."""
         try:
-            # 1. Fetch the login entry point
-            login_url = f"{SITE}/oidc/login"
-            headers = {"User-Agent": USER_AGENT}
-            req = urllib.request.Request(login_url, headers=headers)
+            verifier = secrets.token_urlsafe(64)
+            digest = hashlib.sha256(verifier.encode("utf-8")).digest()
+            challenge = base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
+
+            auth_url = (
+                f"{SITE}/oidc/realms/remilia/protocol/openid-connect/auth?"
+                f"client_id=profile&redirect_uri={urllib.parse.quote(SITE + '/')}"
+                f"&response_type=code&scope=openid%20profile%20email"
+                f"&code_challenge={challenge}&code_challenge_method=S256"
+            )
+
+            req = urllib.request.Request(auth_url, headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            })
+            cookie_hdr = self._cookie_header()
+            if cookie_hdr:
+                req.add_header("Cookie", cookie_hdr)
+
             try:
-                resp = urllib.request.urlopen(req, timeout=30)
-                self._update_cookies(resp.headers)
-                final_url = resp.geturl()
-                html_text = resp.read().decode("utf-8", "replace")
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    self._update_cookies(resp.headers)
+                    final_url = resp.geturl()
+                    html_text = resp.read().decode("utf-8", "replace")
             except urllib.error.HTTPError as e:
                 self._update_cookies(e.headers)
                 final_url = e.geturl()
                 html_text = e.read().decode("utf-8", "replace")
 
-            parser = FormParser()
-            parser.feed(html_text)
+            # Extract loginAction from Keycloakify kcContext or fallback form
+            action_match = re.search(r'["\']loginAction["\']\s*:\s*["\']([^"\']+)["\']', html_text)
+            if action_match:
+                action = action_match.group(1).replace(r"\/", "/")
+            else:
+                parser = FormParser()
+                parser.feed(html_text)
+                action = parser.action
 
-            if not parser.action:
+            if not action:
                 return "RemiliaNET's sign-in form didn't open. Try again in a minute"
 
-            form_url = urllib.parse.urljoin(final_url, parser.action)
-            fields = dict(parser.inputs)
-            fields["username"] = email
-            fields["password"] = password
-            fields["rememberMe"] = "on"
+            post_data = urllib.parse.urlencode({
+                "username": email,
+                "password": password,
+                "rememberMe": "on",
+            }).encode("utf-8")
 
-            post_data = urllib.parse.urlencode(fields).encode("utf-8")
             post_headers = {
                 "User-Agent": USER_AGENT,
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Referer": final_url,
+                "Origin": SITE,
             }
             cookie_hdr = self._cookie_header()
             if cookie_hdr:
                 post_headers["Cookie"] = cookie_hdr
 
-            post_req = urllib.request.Request(form_url, data=post_data, headers=post_headers, method="POST")
+            post_req = urllib.request.Request(action, data=post_data, headers=post_headers, method="POST")
+            opener = urllib.request.build_opener(NoRedirectHandler)
+
             try:
-                resp2 = urllib.request.urlopen(post_req, timeout=30)
+                resp2 = opener.open(post_req, timeout=30)
                 self._update_cookies(resp2.headers)
                 page2_url = resp2.geturl()
                 page2_html = resp2.read().decode("utf-8", "replace")
+                status2 = resp2.status
+                loc2 = resp2.headers.get("Location")
             except urllib.error.HTTPError as e2:
                 self._update_cookies(e2.headers)
                 page2_url = e2.geturl()
                 page2_html = e2.read().decode("utf-8", "replace")
+                status2 = e2.code
+                loc2 = e2.headers.get("Location")
 
-            # Check if back on RemiliaNET
-            if "/oidc/" not in page2_url and (SITE in page2_url or "remilia.net" in page2_url):
-                return None
+            # Check if Keycloak redirected us to the authorization callback
+            if loc2 or status2 in (301, 302, 303, 307, 308):
+                parsed = urllib.parse.urlparse(loc2 or page2_url)
+                auth_code = urllib.parse.parse_qs(parsed.query).get("code", [None])[0]
+                if auth_code:
+                    err = self._exchange_token(auth_code, verifier)
+                    if err:
+                        return err
+                    return None
 
-            # Parse OTP or error
-            p2 = FormParser()
-            p2.feed(page2_html)
+            # Check for error or OTP prompt
+            summary_match = re.search(r'["\']summary["\']\s*:\s*["\']([^"\']+)["\']', page2_html)
+            err_msg = summary_match.group(1) if summary_match else ""
 
-            if "login-otp" in page2_url or "otp" in p2.inputs:
-                self._step = {"page": "login-otp.ftl", "error": p2.feedback.strip()}
+            page_match = re.search(r'["\']pageId["\']\s*:\s*["\']([^"\']+)["\']', page2_html)
+            page_id = page_match.group(1) if page_match else ""
+
+            if not page_id:
+                p2 = FormParser()
+                p2.feed(page2_html)
+                page_id = p2.page_id or ""
+                if not err_msg:
+                    err_msg = p2.feedback.strip()
+
+            if page_id.startswith("login-otp") or "login-otp" in page2_html:
+                otp_action_match = re.search(r'["\']loginAction["\']\s*:\s*["\']([^"\']+)["\']', page2_html)
+                otp_action = otp_action_match.group(1).replace(r"\/", "/") if otp_action_match else None
+                self._otp_context = {"action": otp_action, "verifier": verifier, "referer": page2_url}
+                self._step = {"page": "login-otp.ftl", "error": err_msg}
                 return self.finish_steps(ask_code)
 
-            if p2.feedback.strip():
-                return p2.feedback.strip()
+            if err_msg:
+                return err_msg
+
+            if page_id:
+                return CANT_DO.get(page_id) or f"RemiliaNET asked for a step RemiDex can't do yet ({page_id.removesuffix('.ftl') or 'unknown'})"
 
             return "RemiliaNET took the sign-in but didn't finish it. Try again in a minute"
         except Exception as e:

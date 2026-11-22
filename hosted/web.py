@@ -594,7 +594,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.command in ("POST", "DELETE") and not self.our_origin():
             return self.answer(403, b"Forbidden")
         token, home = self.session()
-        if path in ("/logo.svg", "/icon.svg") or path.startswith("/public/"):
+        if path in ("/logo.svg", "/icon.svg", "/favicon.ico") or path.startswith("/public/"):
             return self.asset(path)
         if path == "/sign-in":
             return self.go_to("/") if signed_in(home) else self.answer(200, sign_in_page(), "text/html; charset=utf-8")
@@ -621,7 +621,7 @@ class Handler(BaseHTTPRequestHandler):
         name = path.removeprefix("/public/")
         if path == "/logo.svg":
             body, kind = dashboard.remidex_logo(), "image/svg+xml"
-        elif path == "/icon.svg":
+        elif path in ("/icon.svg", "/favicon.ico"):
             body, kind = dashboard.remidex_icon(), "image/svg+xml"
         elif name in dashboard.PUBLIC:
             body, kind = dashboard.public_asset(name), dashboard.PUBLIC[name][1]
