@@ -1479,9 +1479,9 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         origin_ok = not origin or origin.split("//", 1)[-1] in NAMES
         attaching = self.path == "/api/chat/attach"  # (the file itself, sent as its own type: see chat_attach)
-        if (self.path not in ("/api/switch", "/api/goal", "/api/make", "/api/hammers", "/api/pause", "/api/queue", "/api/profile", "/api/lock", "/api/sacrifice", "/api/step", "/api/looking",
+        if (self.path not in ("/api/switch", "/api/goal", "/api/make", "/api/hammers", "/api/pause", "/api/queue", "/api/profile", "/api/lock", "/api/sacrifice", "/api/step", "/api/looking", "/api/leaving",
                               "/api/claim", "/api/chat/attach", "/api/chat/send", "/api/chat/react", "/api/sign-in", "/api/sign-in/code", "/api/sign-in/stop") or not self.local_only()
-                or (self.headers.get("Content-Type") not in CHAT_TYPES if attaching else self.headers.get("Content-Type") != "application/json") or not origin_ok):
+                or (self.headers.get("Content-Type") not in CHAT_TYPES if attaching else self.path != "/api/leaving" and self.headers.get("Content-Type") != "application/json") or not origin_ok):
             self.send_error(403)
             return
         if attaching:

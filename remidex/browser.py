@@ -293,11 +293,17 @@ class Site:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 self._update_cookies(resp.headers)
                 raw = resp.read()
-                tokens = json.loads(raw.decode("utf-8", "replace"))
+                try:
+                    tokens = json.loads(raw.decode("utf-8", "replace")) if raw else {}
+                except Exception:
+                    tokens = {}
         except urllib.error.HTTPError as e:
             self._update_cookies(e.headers)
             raw = e.read()
-            tokens = json.loads(raw.decode("utf-8", "replace")) if raw else {}
+            try:
+                tokens = json.loads(raw.decode("utf-8", "replace")) if raw else {}
+            except Exception:
+                tokens = {}
             return tokens.get("error_description") or tokens.get("error") or f"Token exchange failed (HTTP {e.code})"
         except Exception as e:
             return f"Token exchange error: {e}"

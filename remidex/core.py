@@ -73,7 +73,7 @@ def as_dict(value):
 def read_json(path):
     try:
         return json.loads(path.read_text())
-    except (FileNotFoundError, ValueError):
+    except (FileNotFoundError, ValueError, OSError):
         return {}
 
 
@@ -82,9 +82,16 @@ def write_json(path, data):
     writing at once (the dashboard answers requests side by side) can't take each other's."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.stem}.{os.getpid()}-{threading.get_ident()}.tmp")
-    with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
-        json.dump(data, f, indent=1, sort_keys=True)
-    os.replace(tmp, path)
+    try:
+        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+            json.dump(data, f, indent=1, sort_keys=True)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
 
 
 @contextlib.contextmanager

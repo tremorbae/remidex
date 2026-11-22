@@ -990,6 +990,8 @@ class Handler(BaseHTTPRequestHandler):
         desks.using(home, 1)
         connection = None
         answered = False
+        content_len = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(content_len) if content_len > 0 else b""
         try:
             for attempt in range(4):
                 try:
@@ -1002,10 +1004,8 @@ class Handler(BaseHTTPRequestHandler):
                         if self.headers.get(name) is not None:
                             connection.putheader(name, self.headers[name])
                     connection.endheaders()
-                    left = int(self.headers.get("Content-Length") or 0)
-                    while left > 0 and (chunk := self.rfile.read(min(left, 1 << 16))):
-                        connection.send(chunk)
-                        left -= len(chunk)
+                    if body:
+                        connection.send(body)
                     answer = connection.getresponse()
                     break
                 except (ConnectionRefusedError, ConnectionResetError, http.client.CannotSendRequest, http.client.ResponseNotReady):

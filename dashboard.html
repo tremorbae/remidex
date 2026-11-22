@@ -1895,7 +1895,8 @@ function questsPane() {
   if (data.console?.task === "goal") parts.push(planProgress(data.console));
   if (q) {
     parts.push(el("div", {className: "qhow", textContent: q.how}));
-    parts.push(el("div", {className: "lbar"}, el("span", {style: `width:${Math.min(100, q.have / q.need * 100)}%`})));
+    const pct = (q.need && q.have != null) ? Math.min(100, (q.have / q.need) * 100) : 0;
+    parts.push(el("div", {className: "lbar"}, el("span", {style: `width:${pct}%`})));
     const steps = el("div", {className: "lsteps"});
     for (const s of (q.steps || []).filter(s => s.done !== null)) steps.append(el("div", {className: s.done ? "ok" : ""}, el("b", {textContent: s.done ? "✓" : "○"}), s.text));
     parts.push(steps);
@@ -2279,8 +2280,12 @@ const questTab = q => {  // the one tab a quest is in: being worked on (current,
   if (data.goal?.id === q.id || (data.goal_queue || []).some(g => g.id === q.id)) return "open";
   return q.done_at ? "done" : "all";
 };
-const qbar = (q, style = "") => el("div", {className: "qbar", style}, el("div", {className: "track"}, el("span", {style: `width:${Math.min(100, q.have / q.need * 100)}%`})),
-  `${q.have.toLocaleString()}/${q.need.toLocaleString()}`);
+const qbar = (q, style = "") => {
+  const pct = (q.need && q.have != null) ? Math.min(100, (q.have / q.need) * 100) : 0;
+  const have = (q.have ?? 0).toLocaleString(), need = (q.need ?? 0).toLocaleString();
+  return el("div", {className: "qbar", style}, el("div", {className: "track"}, el("span", {style: `width:${pct}%`})),
+    `${have}/${need}`);
+};
 function questCard(q, byKey) {
   const icon = byKey[q.icon] ? tile({...byKey[q.icon], count: null}) : el("div", {className: "ch", textContent: q.icon});
   icon.removeAttribute?.("data-key");
@@ -3186,8 +3191,16 @@ const looking = () => {
   fetch("/api/looking", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}).catch(() => {});
 };
 looking(); setInterval(looking, 8000);
-window.addEventListener("pagehide", () => { navigator.sendBeacon("/api/leaving", "{}"); });
-window.addEventListener("beforeunload", () => { navigator.sendBeacon("/api/leaving", "{}"); });
+window.addEventListener("pagehide", () => {
+  try {
+    navigator.sendBeacon("/api/leaving", new Blob(["{}"], {type: "application/json"}));
+  } catch (e) {}
+});
+window.addEventListener("beforeunload", () => {
+  try {
+    navigator.sendBeacon("/api/leaving", new Blob(["{}"], {type: "application/json"}));
+  } catch (e) {}
+});
 loadTrophies(); setInterval(loadTrophies, 30000);  // your trophy case, as it is on RemiliaNET
 loadMe(); setInterval(loadMe, 60000);  // your card's picture and name, as they are on RemiliaNET
 
