@@ -108,11 +108,14 @@ const remember = attempt => { try { attempt == null ? sessionStorage.removeItem(
 const HANDLE_KEY = "remidexHandle";  // the invited handle this tab is signing in as (asked first: see check_invite)
 let handle = (() => { try { return sessionStorage.getItem(HANDLE_KEY); } catch { return null; } })();
 const keepHandle = h => { handle = h; try { h ? sessionStorage.setItem(HANDLE_KEY, h) : sessionStorage.removeItem(HANDLE_KEY); } catch {} };
+const CODE_KEY = "remidexInviteCode";
+let inviteCodeVal = (() => { try { return sessionStorage.getItem(CODE_KEY) || ""; } catch { return ""; } })();
+const keepInviteCode = c => { inviteCodeVal = c || ""; try { c ? sessionStorage.setItem(CODE_KEY, c) : sessionStorage.removeItem(CODE_KEY); } catch {} };
 let state = {}, timer = 0, sending = false, stopping = false, ownError = null, asked = null, lastError = null;  // asked: the code step shown last
 
 function show(s) {  // how it's going (GET /api/sign-in): {signed_in, running, step, error, attempt, hue}
   state = s;
-  if (s.signed_in) { remember(null); keepHandle(null); location.replace("/"); return; }  // signed in: on to the dashboard
+  if (s.signed_in) { remember(null); keepHandle(null); keepInviteCode(null); location.replace("/"); return; }  // signed in: on to the dashboard
   if (typeof s.hue === "number") document.documentElement.style.setProperty("--h", s.hue);
   if (!s.running) stopping = false;
   const codeStep = s.running && !stopping && (s.step === "code" || s.step === "checking");
@@ -201,6 +204,7 @@ $("handleForm").onsubmit = async e => {
   }
   if (ok && matchedHandle) {
     keepHandle(matchedHandle);
+    keepInviteCode(code);
   }
   sending = false; $("next").disabled = false; $("next").classList.remove("working");
   show(state);
@@ -209,7 +213,7 @@ $("handleForm").onsubmit = async e => {
 
 $("notMe").onclick = () => {
   keepHandle(null);
-  inviteCodeVal = "";
+  keepInviteCode(null);
   $("inviteCode").value = "";
   ownError = null;
   show(state);

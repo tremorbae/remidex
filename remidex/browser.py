@@ -254,6 +254,9 @@ class Site:
             "Accept": "application/json",
             "Origin": SITE,
         }
+        cookie_hdr = self._cookie_header()
+        if cookie_hdr:
+            headers["Cookie"] = cookie_hdr
         req = urllib.request.Request(token_url, data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
@@ -377,7 +380,10 @@ class Site:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 self._update_cookies(resp.headers)
                 raw = resp.read()
-                data = json.loads(raw) if raw else {}
+                try:
+                    data = json.loads(raw) if raw else {}
+                except Exception:
+                    data = {}
                 token = data.get("media_id") or data.get("mediaId") or data.get("id") or data.get("token")
                 if resp.status != 200 or not token:
                     note_health(resp.status)
@@ -504,7 +510,7 @@ class Site:
         summary_match = re.search(r'["\']summary["\']\s*:\s*["\']([^"\']+)["\']', page_html)
         err_msg = summary_match.group(1) if summary_match else "Invalid authenticator code"
         next_action_match = re.search(r'["\']loginAction["\']\s*:\s*["\']([^"\']+)["\']', page_html)
-        if next_action_match:
+        if next_action_match and self._otp_context is not None:
             self._otp_context["action"] = html.unescape(next_action_match.group(1).replace(r"\/", "/"))
         if self._step:
             self._step["error"] = err_msg

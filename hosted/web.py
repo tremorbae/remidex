@@ -454,7 +454,17 @@ class Desks:
                                                  env={**os.environ, "REMIDEX_HOME": str(home), "REMIDEX_PORT": str(desk.port)})
                 threading.Thread(target=self.wait_for, args=(desk,), daemon=True).start()
             desk.used = time.time()
-        if not desk.ready.wait(DESK_START) or desk.proc.poll() is not None:
+        if not desk.ready.is_set():
+            try:
+                socket.create_connection(("127.0.0.1", desk.port), timeout=0.2).close()
+                desk.ready.set()
+            except OSError:
+                pass
+        if not desk.ready.wait(DESK_START) or (desk.proc and desk.proc.poll() is not None):
+            with self.lock:
+                if self.desks.get(home) is desk:
+                    self.desks.pop(home, None)
+            stop(desk.proc)
             raise RuntimeError("the dashboard didn't start")
         return desk.port
 
@@ -485,7 +495,7 @@ class Desks:
 
     def tidy(self):
         with self.lock:
-            idle = [h for h, d in self.desks.items() if d.proc.poll() is not None or (d.busy <= 0 and time.time() - d.used > DESK_IDLE)]
+            idle = [h for h, d in self.desks.items() if (d.proc and d.proc.poll() is not None) or (d.busy <= 0 and time.time() - d.used > DESK_IDLE)]
         for home in idle:
             self.stop(home)
 
@@ -552,7 +562,10 @@ class Scheduler(threading.Thread):
                     log(f"Scheduler: couldn't look at ~{home.name}'s bot ({type(e).__name__}: {e}).")
                     continue
                 if wanted:
-                    self.rounds[home] = (self.start_round(home), time.time())
+                    try:
+                        self.rounds[home] = (self.start_round(home), time.time())
+                    except Exception as e:
+                        log(f"Scheduler: couldn't start round for ~{home.name} ({type(e).__name__}: {e}).")
         write_json(SCHEDULER_FILE, {"at": time.time(), "rounds": len(self.rounds), "most": self.most})
 
     def run(self):
@@ -598,7 +611,7 @@ def welcome(run, handle):
         new = not home.exists()
         if new:
             USERS_DIR.mkdir(parents=True, exist_ok=True)
-            run.home.rename(home)
+            shutil.move(str(run.home), str(home))
         else:
             write_json(home / "cookies.json", read_json(run.home / "cookies.json"))
             with editing(home / "state.json"):
@@ -819,6 +832,9 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 asked = {}
             target_handle = str(asked.get("handle") or "").strip().lstrip("~").lower() if isinstance(asked, dict) else ""
+            if not target_handle and isinstance(asked, dict) and asked.get("code"):
+                with _invites_lock:
+                    target_handle = INVITE_CODES.get(str(asked.get("code")).strip().upper(), "")
             if not (target_handle and invited(target_handle)):
                 return self.answer(403, b"RemiDex is invite-only right now")
             with _invites_lock:

@@ -497,7 +497,9 @@ def watch_feed():
 
 def view_profile(site, handle):
     """Opens their profile the way the website does (the profile data, then the page itself). Returns the HTTP status."""
-    status, profile = site.signed_api("GET", f"/api/profile/~{urllib.parse.quote(handle, safe='')}")
+    if not handle:
+        return 400
+    status, profile = site.signed_api("GET", f"/api/profile/~{urllib.parse.quote(str(handle), safe='')}")
     if status == 200:
         note_achievements(profile)
         site.api("HEAD", f"/~{urllib.parse.quote(handle, safe='')}")

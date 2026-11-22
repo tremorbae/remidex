@@ -1639,8 +1639,11 @@ class Handler(BaseHTTPRequestHandler):
         bot.CHAT_FILES.mkdir(parents=True, exist_ok=True)
         waiting = list(bot.CHAT_FILES.iterdir())
         for old in waiting:
-            if time.time() - old.stat().st_mtime > CHAT_FILE_KEPT:  # attached, but never sent
-                old.unlink(missing_ok=True)
+            try:
+                if time.time() - old.stat().st_mtime > CHAT_FILE_KEPT:  # attached, but never sent
+                    old.unlink(missing_ok=True)
+            except OSError:
+                pass
         if sum(1 for f in bot.CHAT_FILES.iterdir()) >= CHAT_FILES_MAX:
             self.send_error(429)
             return
