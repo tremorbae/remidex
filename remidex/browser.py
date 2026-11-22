@@ -620,11 +620,13 @@ def signed_out():
     return bool(read_json(STATE_FILE).get("needs_login")) or not COOKIES_FILE.exists()
 
 
-def finish_sign_in(cookies, first_time):
+def finish_sign_in(cookies, first_time, handle=None):
     if first_time:
         first_sign_in_defaults()
     write_json(COOKIES_FILE, {"cookies": cookies})
     state = read_json(STATE_FILE)
+    if handle:
+        state["handle"] = handle
     state.pop("needs_login", None)
     write_json(STATE_FILE, state)
 
@@ -646,7 +648,7 @@ def sign_in_with(email, password, ask_code=None):
         cookies = [{"name": k, "value": v} for k, v in site.cookies.items()]
     finally:
         site.close()
-    finish_sign_in(cookies, first_time)
+    finish_sign_in(cookies, first_time, handle=handle)
     log(f"Signed in as ~{handle} from the RemiDex dashboard.")
     return handle, None
 

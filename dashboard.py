@@ -338,6 +338,11 @@ def trophy_case(fresh=False):
     (3 shelves of 5), the shelf's look, and how many you have. None if the site can't be reached. The pictures are served
     by trophy_picture and shelf_texture."""
     handle, user = my_profile(fresh)
+    if not handle:
+        h = Path(bot.APP_DIR).name
+        if h and h != "site" and re.match(r"^[a-z0-9_]{1,40}$", h.lower()):
+            handle = h.lower()
+            user = live_profile(handle)
     case = user.get("trophyCase") if user else None
     if not (user and isinstance(user.get("trophyShelves"), list) and isinstance(case, dict)):
         return None
@@ -356,20 +361,30 @@ def trophy_case(fresh=False):
 def trophy_picture(trophy_id):
     """The picture of one of your trophies, as the site shows it on the shelf: downloaded once, from the site's public
     trophy pictures only. None if it isn't one of yours."""
-    icon = next((t.get("icon") for t in (my_profile()[1] or {}).get("allTrophies") or [] if isinstance(t, dict) and t.get("id") == trophy_id), None)
+    handle, user = my_profile()
+    if not user:
+        h = handle or Path(bot.APP_DIR).name
+        if h and h != "site" and re.match(r"^[a-z0-9_]{1,40}$", h.lower()):
+            user = live_profile(h.lower())
+    icon = next((t.get("icon") for t in (user or {}).get("allTrophies") or [] if isinstance(t, dict) and t.get("id") == trophy_id), None)
     if not (isinstance(icon, str) and icon.startswith(TROPHY_PATH) and ".." not in icon):
         return None
+    local = (bot.SHARED_DIR / "trophies" / f"{trophy_id}-{hashlib.sha1(icon.encode()).hexdigest()[:10]}") if hasattr(bot, "SHARED_DIR") and bot.SHARED_DIR.exists() else (bot.DASH_DIR / "trophies" / f"{trophy_id}-{hashlib.sha1(icon.encode()).hexdigest()[:10]}")
     with _picture_turns:
-        return fetch_once(bot.SITE + icon, bot.DASH_DIR / "trophies" / f"{trophy_id}-{hashlib.sha1(icon.encode()).hexdigest()[:10]}")
+        return fetch_once(bot.SITE + icon, local)
 
 
 def shelf_texture(name):
     """The picture the site draws your shelf from (it's the one for the case you have now: name says which)."""
     handle, user = my_profile()
-    if not handle or texture_name((user or {}).get("trophyCase")) != name:
+    h = handle or Path(bot.APP_DIR).name
+    if not user and h and h != "site" and re.match(r"^[a-z0-9_]{1,40}$", h.lower()):
+        user = live_profile(h.lower())
+    if not h or texture_name((user or {}).get("trophyCase")) != name:
         return None
+    local = (bot.SHARED_DIR / "trophies" / f"shelf-{name}") if hasattr(bot, "SHARED_DIR") and bot.SHARED_DIR.exists() else (bot.DASH_DIR / "trophies" / f"shelf-{name}")
     with _picture_turns:
-        return fetch_once(f"{bot.SITE}{TROPHY_PATH}{urllib.parse.quote(handle, safe='')}/shelf", bot.DASH_DIR / "trophies" / f"shelf-{name}")
+        return fetch_once(f"{bot.SITE}{TROPHY_PATH}{urllib.parse.quote(h, safe='')}/shelf", local)
 
 
 def me_live(fresh=False):
