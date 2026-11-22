@@ -63,6 +63,7 @@ ADMINS = {h.strip().lstrip("~").lower() for h in (os.environ.get("REMIDEX_ADMINS
 
 _invites_lock = threading.Lock()
 INVITES = set()  # the invite cache (env + Neon); mutated in place
+INVITE_DETAILS = {}  # handle -> {"code": str or None, "redeemed": bool}
 _db = None  # Neon connection, lazy
 
 
@@ -91,7 +92,7 @@ def db_connect():
 
 
 def ensure_invites_table():
-    """Create the invites table in Neon if it isn't there yet."""
+    """Create the invites table in Neon if it isn't there yet, and ensure code & redeemed_at columns exist."""
     global _db
     db = db_connect()
     if not db:
@@ -100,8 +101,12 @@ def ensure_invites_table():
         with db.cursor() as cur:
             cur.execute("""CREATE TABLE IF NOT EXISTS invites (
                 handle TEXT PRIMARY KEY,
+                code TEXT,
+                redeemed_at TIMESTAMPTZ,
                 added_at TIMESTAMPTZ DEFAULT NOW()
             )""")
+            cur.execute("ALTER TABLE invites ADD COLUMN IF NOT EXISTS code TEXT")
+            cur.execute("ALTER TABLE invites ADD COLUMN IF NOT EXISTS redeemed_at TIMESTAMPTZ")
         db.commit()
     except Exception as e:
         try:
@@ -109,19 +114,25 @@ def ensure_invites_table():
         except Exception:
             pass
         _db = None
-        log(f"Website: couldn't create invites table ({type(e).__name__}: {e}).")
+        log(f"Website: couldn't create/update invites table ({type(e).__name__}: {e}).")
 
 
 def load_invites_from_db():
-    """All invited handles from Neon (or None if Neon couldn't be reached)."""
+    """All invited handles and details from Neon (or None if Neon couldn't be reached)."""
     global _db
     db = db_connect()
     if not db:
         return None
     try:
         with db.cursor() as cur:
-            cur.execute("SELECT handle FROM invites")
-            return {row[0].strip().lstrip("~").lower() for row in cur.fetchall()}
+            cur.execute("SELECT handle, code, redeemed_at FROM invites")
+            details = {}
+            for row in cur.fetchall():
+                h = row[0].strip().lstrip("~").lower()
+                code = row[1] if row[1] else None
+                redeemed = row[2] is not None
+                details[h] = {"code": code, "redeemed": redeemed}
+            return details
     except Exception as e:
         log(f"Website: couldn't read invites from Neon ({type(e).__name__}: {e}).")
         _db = None
@@ -134,9 +145,17 @@ def refresh_invites():
     with _invites_lock:
         if db_inv is not None:
             INVITES.clear()
-            INVITES.update(env_invites() | db_inv)
+            INVITE_DETAILS.clear()
+            env_set = env_invites()
+            INVITES.update(env_set | set(db_inv.keys()))
+            INVITE_DETAILS.update(db_inv)
+            for h in env_set:
+                INVITE_DETAILS.setdefault(h, {"code": None, "redeemed": True})
         else:
-            INVITES.update(env_invites())
+            env_set = env_invites()
+            INVITES.update(env_set)
+            for h in env_set:
+                INVITE_DETAILS.setdefault(h, {"code": None, "redeemed": True})
     log(f"Website: invite list refreshed ({len(INVITES)} invited).")
 
 
@@ -146,19 +165,75 @@ def invited(handle):
         return "*" in INVITES or str(handle or "").strip().lstrip("~").lower() in INVITES
 
 
+def generate_invite_code(handle):
+    """Generate and store a new one-time invite code for this handle."""
+    global _db
+    name = str(handle or "").strip().lstrip("~").lower()
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    suffix = "".join(secrets.choice(alphabet) for _ in range(6))
+    code = f"REMI-{suffix}"
+    with _invites_lock:
+        INVITES.add(name)
+        INVITE_DETAILS[name] = {"code": code, "redeemed": False}
+    db = db_connect()
+    if db:
+        try:
+            with db.cursor() as cur:
+                cur.execute("""INSERT INTO invites (handle, code, redeemed_at)
+                               VALUES (%s, %s, NULL)
+                               ON CONFLICT (handle) DO UPDATE SET code = EXCLUDED.code, redeemed_at = NULL""",
+                            (name, code))
+            db.commit()
+            log(f"Website: generated invite code {code} for ~{name}.")
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            _db = None
+            log(f"Website: couldn't save invite code for ~{name} to Neon ({e}); kept in cache.")
+    return code
+
+
+def redeem_invite(handle):
+    """Marks an invite as redeemed upon successful sign-in."""
+    global _db
+    name = str(handle or "").strip().lstrip("~").lower()
+    with _invites_lock:
+        if name in INVITE_DETAILS:
+            INVITE_DETAILS[name]["redeemed"] = True
+    db = db_connect()
+    if db:
+        try:
+            with db.cursor() as cur:
+                cur.execute("UPDATE invites SET redeemed_at = NOW() WHERE handle = %s", (name,))
+            db.commit()
+            log(f"Website: invite redeemed for ~{name}.")
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            _db = None
+
+
 def add_invite(handle):
     """Add a handle to the invite list (cache + Neon if configured). Returns whether it worked."""
     global _db
     name = str(handle or "").strip().lstrip("~").lower()
     with _invites_lock:
         INVITES.add(name)
+        INVITE_DETAILS[name] = {"code": None, "redeemed": False}
     db = db_connect()
     if not db:
         log(f"Website: invited ~{name} (cache only, no Neon).")
         return True
     try:
         with db.cursor() as cur:
-            cur.execute("INSERT INTO invites (handle) VALUES (%s) ON CONFLICT (handle) DO NOTHING", (name,))
+            cur.execute("""INSERT INTO invites (handle, code, redeemed_at)
+                           VALUES (%s, NULL, NULL)
+                           ON CONFLICT (handle) DO UPDATE SET code = NULL, redeemed_at = NULL""",
+                        (name,))
         db.commit()
         log(f"Website: invited ~{name}.")
         return True
@@ -178,6 +253,12 @@ def remove_invite(handle):
     name = str(handle or "").strip().lstrip("~").lower()
     with _invites_lock:
         INVITES.discard(name)
+        INVITE_DETAILS.pop(name, None)
+    sessions.drop(handle=name)
+    home = USERS_DIR / name
+    if home.exists():
+        scheduler.hold(home)
+        desks.stop(home)
     db = db_connect()
     if not db:
         log(f"Website: uninvited ~{name} (cache only, no Neon).")
@@ -494,6 +575,7 @@ def welcome(run, handle):
             shutil.rmtree(run.home, ignore_errors=True)
     finally:
         scheduler.hold(home, False)
+    redeem_invite(name)
     log(f"Website: ~{name} signed in{' for the first time' if new else ''}.")
     return home
 
@@ -633,6 +715,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.list_invites(token, home)
         if path == "/api/invites" and self.command == "POST":
             return self.add_invite_api(token, home)
+        if path == "/api/invites/code" and self.command == "POST":
+            return self.generate_code_api(token, home)
         if path.startswith("/api/invites/") and self.command == "DELETE":
             return self.remove_invite_api(token, home, path)
         if path.startswith("/api/sign-in"):
@@ -701,8 +785,17 @@ class Handler(BaseHTTPRequestHandler):
                 asked = json.loads(body or b"{}")
             except ValueError:
                 asked = {}
-            if not (isinstance(asked, dict) and invited(asked.get("handle"))):
+            target_handle = str(asked.get("handle") or "").strip().lstrip("~").lower() if isinstance(asked, dict) else ""
+            if not (target_handle and invited(target_handle)):
                 return self.answer(403, b"RemiDex is invite-only right now")
+            with _invites_lock:
+                info = INVITE_DETAILS.get(target_handle, {})
+                stored_code = (info.get("code") or "").strip().upper()
+                is_redeemed = info.get("redeemed", False) or (USERS_DIR / target_handle / "cookies.json").exists()
+            if stored_code and not is_redeemed and not is_admin(target_handle):
+                provided_code = str(asked.get("code") or "").strip().upper()
+                if provided_code != stored_code:
+                    return self.answer_json({"error": "Valid invite code required to sign in"}, status=403)
             address = self.address()
             with signins_lock:
                 recent = [t for t in started_from.get(address, []) if time.time() - t < SIGN_INS_PER_ADDRESS[1]]
@@ -719,12 +812,42 @@ class Handler(BaseHTTPRequestHandler):
         return self.answer_json(said, status, cookies=[self.cookie(PENDING, pending, SIGN_IN_KEPT)])
 
     def check_invite(self):
-        """POST /api/invited {"handle"}: whether that handle may sign in (the sign-in page asks before the password)."""
+        """POST /api/invited {"handle", "code"}: whether that handle may sign in (the sign-in page asks before the password)."""
         try:
             asked = json.loads(self.body() or b"{}")
         except ValueError:
             asked = {}
-        return self.answer_json({"invited": isinstance(asked, dict) and invited(asked.get("handle"))})
+        if not isinstance(asked, dict):
+            return self.answer_json({"invited": False, "error": "Invalid request"})
+        h = str(asked.get("handle") or "").strip().lstrip("~").lower()
+        if not h:
+            return self.answer_json({"invited": False, "error": "Type your handle"})
+        if "*" in INVITES:
+            return self.answer_json({"invited": True, "needs_code": False})
+        if not invited(h):
+            return self.answer_json({"invited": False, "error": f"RemiDex is invite-only right now, and ~{h} isn't on the list."})
+
+        with _invites_lock:
+            info = INVITE_DETAILS.get(h, {})
+            stored_code = (info.get("code") or "").strip().upper()
+            is_redeemed = info.get("redeemed", False) or (USERS_DIR / h / "cookies.json").exists()
+
+        if is_redeemed or is_admin(h):
+            return self.answer_json({"invited": True, "needs_code": False})
+
+        if not stored_code:
+            if not DATABASE_URL:
+                return self.answer_json({"invited": True, "needs_code": False})
+            return self.answer_json({"invited": False, "needs_code": True, "error": f"~{h} is on the list, but an invite code hasn't been generated yet. Ask your admin."})
+
+        code = str(asked.get("code") or "").strip().upper()
+        if not code:
+            return self.answer_json({"invited": True, "needs_code": True})
+
+        if code != stored_code:
+            return self.answer_json({"invited": False, "needs_code": True, "error": "That invite code didn't match. Check the code with your admin."})
+
+        return self.answer_json({"invited": True, "needs_code": False, "verified": True})
 
     def _require_admin(self, token, home):
         """403 if the requester isn't an admin; None if they are."""
@@ -738,7 +861,19 @@ class Handler(BaseHTTPRequestHandler):
         if blocked:
             return blocked
         with _invites_lock:
-            return self.answer_json({"invites": sorted(INVITES), "admins": sorted(ADMINS)})
+            invites_list = []
+            for h in sorted(INVITES):
+                if h == "*":
+                    continue
+                info = INVITE_DETAILS.get(h, {})
+                is_redeemed = info.get("redeemed", False) or (USERS_DIR / h / "cookies.json").exists()
+                invites_list.append({
+                    "handle": h,
+                    "code": info.get("code"),
+                    "redeemed": is_redeemed,
+                    "admin": is_admin(h),
+                })
+            return self.answer_json({"invites": invites_list, "admins": sorted(ADMINS)})
 
     def add_invite_api(self, token, home):
         """POST /api/invites {"handle": "calm"}: invite someone (admin only)."""
@@ -749,11 +884,26 @@ class Handler(BaseHTTPRequestHandler):
             asked = json.loads(self.body() or b"{}")
         except ValueError:
             asked = {}
-        handle = asked.get("handle")
+        handle = str((asked or {}).get("handle", "")).strip().lstrip("~").lower()
         if not handle:
             return self.answer_json({"error": "handle required"}, status=400)
         ok = add_invite(handle)
         return self.answer_json({"ok": ok, "handle": handle})
+
+    def generate_code_api(self, token, home):
+        """POST /api/invites/code {"handle": "calm"}: generate a new code for someone (admin only)."""
+        blocked = self._require_admin(token, home)
+        if blocked:
+            return blocked
+        try:
+            asked = json.loads(self.body() or b"{}")
+        except ValueError:
+            asked = {}
+        handle = str((asked or {}).get("handle", "")).strip().lstrip("~").lower()
+        if not handle or not HANDLE.fullmatch(handle):
+            return self.answer_json({"error": "valid handle required"}, status=400)
+        code = generate_invite_code(handle)
+        return self.answer_json({"ok": True, "handle": handle, "code": code})
 
     def remove_invite_api(self, token, home, path):
         """DELETE /api/invites/{handle}: uninvite someone (admin only)."""

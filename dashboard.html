@@ -3223,25 +3223,97 @@ function renderInvites() {
     list.appendChild(star);
   }
 
-  for (const handle of adminData.invites || []) {
+  for (const item of adminData.invites || []) {
+    const handle = typeof item === "string" ? item : item.handle;
+    const code = typeof item === "object" ? item.code : null;
+    const redeemed = typeof item === "object" ? item.redeemed : false;
     if (handle === "*") continue;
     const row = document.createElement("div");
-    row.style = "display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface-2);border-radius:6px;font-size:13px";
+    row.style = "display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface-2);border-radius:6px;font-size:13px;gap:8px";
+
+    const left = document.createElement("div");
+    left.style = "display:flex;align-items:center;gap:6px;flex-wrap:wrap";
 
     const nameSpan = document.createElement("span");
     nameSpan.style = "font-family:monospace;font-weight:bold";
     nameSpan.textContent = `~${handle}`;
+    left.appendChild(nameSpan);
+
     if (adminData.admins && adminData.admins.includes(handle)) {
       const adm = document.createElement("span");
-      adm.style = "margin-left:6px;font-size:10px;color:var(--accent);font-weight:normal";
+      adm.style = "font-size:10px;color:var(--accent);font-weight:normal";
       adm.textContent = "(admin)";
-      nameSpan.appendChild(adm);
+      left.appendChild(adm);
+    }
+
+    if (redeemed) {
+      const red = document.createElement("span");
+      red.style = "font-size:11px;color:#2e7d32;font-weight:bold;background:#e8f5e9;padding:1px 6px;border-radius:4px";
+      red.textContent = "✓ Active";
+      left.appendChild(red);
+    } else if (code) {
+      const codeSpan = document.createElement("code");
+      codeSpan.style = "font-family:monospace;font-size:11px;background:var(--surface-3);padding:2px 6px;border-radius:4px;color:var(--accent);font-weight:bold";
+      codeSpan.textContent = code;
+      left.appendChild(codeSpan);
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "wbtn";
+      copyBtn.style = "padding:2px 6px;font-size:11px;cursor:pointer";
+      copyBtn.textContent = "📋 Copy";
+      copyBtn.title = "Copy invite code";
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(code);
+          copyBtn.textContent = "✓ Copied";
+          setTimeout(() => { copyBtn.textContent = "📋 Copy"; }, 1500);
+        } catch {
+          prompt("Copy invite code:", code);
+        }
+      };
+      left.appendChild(copyBtn);
+    } else {
+      const genBtn = document.createElement("button");
+      genBtn.type = "button";
+      genBtn.className = "wbtn";
+      genBtn.style = "padding:2px 8px;font-size:11px;cursor:pointer;color:var(--btn-text);background:var(--btn);border:none;border-radius:4px";
+      genBtn.textContent = "Generate Code";
+      genBtn.onclick = async () => {
+        genBtn.disabled = true;
+        genBtn.textContent = "Generating…";
+        try {
+          const res = await fetch("/api/invites/code", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({handle})
+          });
+          const d = await res.json();
+          if (res.ok) {
+            if (typeof item === "object") item.code = d.code;
+            else {
+              const idx = adminData.invites.indexOf(item);
+              if (idx !== -1) adminData.invites[idx] = {handle, code: d.code, redeemed: false};
+            }
+            renderInvites();
+            $("inviteMsg").textContent = `Generated code for ~${handle}: ${d.code}`;
+            $("inviteMsg").className = "pd-msg ok";
+          } else {
+            $("inviteMsg").textContent = d.error || "Failed to generate code";
+            $("inviteMsg").className = "pd-msg bad";
+          }
+        } catch (e) {
+          $("inviteMsg").textContent = e.message;
+          $("inviteMsg").className = "pd-msg bad";
+        }
+      };
+      left.appendChild(genBtn);
     }
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "wbtn";
-    delBtn.style = "color:#c03535;font-size:12px;padding:2px 8px;cursor:pointer";
+    delBtn.style = "color:#c03535;font-size:12px;padding:2px 8px;cursor:pointer;margin-left:auto";
     delBtn.textContent = "✕";
     delBtn.title = `Remove invite for ~${handle}`;
     delBtn.onclick = async () => {
@@ -3249,7 +3321,7 @@ function renderInvites() {
       try {
         const res = await fetch(`/api/invites/${encodeURIComponent(handle)}`, {method: "DELETE"});
         if (res.ok) {
-          adminData.invites = adminData.invites.filter(h => h !== handle);
+          adminData.invites = adminData.invites.filter(h => (typeof h === "string" ? h : h.handle) !== handle);
           renderInvites();
         } else {
           const err = await res.json().catch(() => ({}));
@@ -3262,7 +3334,7 @@ function renderInvites() {
       }
     };
 
-    row.appendChild(nameSpan);
+    row.appendChild(left);
     row.appendChild(delBtn);
     list.appendChild(row);
   }
@@ -3284,12 +3356,13 @@ async function addInvite() {
     const data = await res.json();
     if (res.ok) {
       inp.value = "";
-      if (!adminData.invites.includes(handle)) {
-        adminData.invites.push(handle);
-        adminData.invites.sort();
+      const existing = (adminData.invites || []).some(h => (typeof h === "string" ? h : h.handle) === handle);
+      if (!existing) {
+        adminData.invites.push({handle, code: null, redeemed: false});
+        adminData.invites.sort((a, b) => (typeof a === "string" ? a : a.handle).localeCompare(typeof b === "string" ? b : b.handle));
       }
       renderInvites();
-      $("inviteMsg").textContent = `Invited ~${handle}`;
+      $("inviteMsg").textContent = `Invited ~${handle}. Click "Generate Code" to create their code.`;
       $("inviteMsg").className = "pd-msg ok";
     } else {
       $("inviteMsg").textContent = data.error || "Failed to invite";

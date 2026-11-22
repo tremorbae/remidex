@@ -79,6 +79,7 @@
       <img class="logo" src="/logo.svg" alt="RemiDex" width="150" height="40">
       <p class="lead">Plays BeetleBoy and BeetleCraft on RemiliaNET for you. It's invite-only for now: start with your RemiliaNET handle.</p>
       <label>RemiliaNET handle<input id="handle" name="handle" type="text" placeholder="~yourname" spellcheck="false" autocapitalize="off" autocomplete="nickname" required autofocus></label>
+      <label id="codeLabel" hidden>One-time invite code<input id="inviteCode" name="inviteCode" type="text" placeholder="REMI-XXXXXX" spellcheck="false" autocapitalize="characters" autocomplete="off"></label>
       <button id="next" type="submit"><span class="spin" aria-hidden="true"></span><span>CONTINUE</span></button>
       <p class="note" id="handleNote" role="status" aria-live="polite">Not made by Remilia.</p>
     </form>
@@ -163,13 +164,15 @@ const sendError = err => err.message === "Failed to fetch" ? "RemiDex isn't answ
   : err.message === "HTTP 503" ? "RemiDex is busy signing other people in. Try again in a minute"
   : `RemiDex didn't take it (${err.message})`;
 
+let inviteCodeVal = "";
+
 $("form").onsubmit = async e => {
   e.preventDefault();
   const email = $("email").value.trim(), password = $("password").value;
   if (sending || state.running || !email || !password) return;
   ownError = null; sending = true; show(state);
   try {
-    remember((await send("/api/sign-in", {email, password, handle})).attempt);
+    remember((await send("/api/sign-in", {email, password, handle, code: inviteCodeVal || undefined})).attempt);
     $("password").value = "";
   } catch (err) {
     if (err.message !== "busy") ownError = sendError(err);  // (busy: signed in already, or one's under way: check says which)
@@ -180,18 +183,52 @@ $("form").onsubmit = async e => {
 $("handleForm").onsubmit = async e => {
   e.preventDefault();
   const h = $("handle").value.trim().replace(/^~/, ""), note = $("handleNote");
+  const code = $("inviteCode").value.trim().toUpperCase();
   if (!h || sending) return;
   sending = true; $("next").disabled = true; $("next").classList.add("working"); note.classList.remove("bad"); note.textContent = "Checking the invite list.";
   let ok = false;
-  try { ok = (await send("/api/invited", {handle: h})).invited === true; } catch (err) { note.textContent = sendError(err); note.classList.add("bad"); }
+  try {
+    const res = await send("/api/invited", {handle: h, code: code || undefined});
+    if (res.needs_code && !code) {
+      $("codeLabel").hidden = false;
+      $("inviteCode").required = true;
+      $("inviteCode").focus();
+      note.textContent = "Type the one-time invite code given by your admin.";
+      sending = false; $("next").disabled = false; $("next").classList.remove("working");
+      return;
+    }
+    if (res.invited === true) {
+      ok = true;
+      inviteCodeVal = code;
+    } else {
+      note.textContent = res.error || `RemiDex is invite-only right now, and ~${h} isn't on the list.`;
+      note.classList.add("bad");
+      if (res.needs_code) {
+        $("codeLabel").hidden = false;
+        $("inviteCode").required = true;
+        $("inviteCode").focus();
+      }
+    }
+  } catch (err) {
+    note.textContent = sendError(err);
+    note.classList.add("bad");
+  }
   if (ok) keepHandle(h);
-  else if (!note.classList.contains("bad")) { note.textContent = `RemiDex is invite-only right now, and ~${h} isn't on the list.`; note.classList.add("bad"); }
   sending = false; $("next").disabled = false; $("next").classList.remove("working");
   show(state);
   if (ok) $("email").focus();
 };
 
-$("notMe").onclick = () => { keepHandle(null); ownError = null; show(state); $("handle").focus(); };
+$("notMe").onclick = () => {
+  keepHandle(null);
+  inviteCodeVal = "";
+  $("codeLabel").hidden = true;
+  $("inviteCode").value = "";
+  $("inviteCode").required = false;
+  ownError = null;
+  show(state);
+  $("handle").focus();
+};
 
 $("codeForm").onsubmit = async e => {
   e.preventDefault();
