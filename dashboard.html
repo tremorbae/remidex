@@ -3246,12 +3246,7 @@ function renderInvites() {
       left.appendChild(adm);
     }
 
-    if (redeemed) {
-      const red = document.createElement("span");
-      red.style = "font-size:11px;color:#2e7d32;font-weight:bold;background:#e8f5e9;padding:1px 6px;border-radius:4px";
-      red.textContent = "✓ Active";
-      left.appendChild(red);
-    } else if (code) {
+    if (code) {
       const codeSpan = document.createElement("code");
       codeSpan.style = "font-family:monospace;font-size:11px;background:var(--surface-3);padding:2px 6px;border-radius:4px;color:var(--accent);font-weight:bold";
       codeSpan.textContent = code;

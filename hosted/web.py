@@ -63,7 +63,8 @@ ADMINS = {h.strip().lstrip("~").lower() for h in (os.environ.get("REMIDEX_ADMINS
 
 _invites_lock = threading.Lock()
 INVITES = set()  # the invite cache (env + Neon); mutated in place
-INVITE_DETAILS = {}  # handle -> {"code": str or None, "redeemed": bool}
+INVITE_DETAILS = {}  # handle -> {"code": str or None}
+INVITE_CODES = {}  # code.upper() -> handle.lower()
 _db = None  # Neon connection, lazy
 
 
@@ -92,7 +93,7 @@ def db_connect():
 
 
 def ensure_invites_table():
-    """Create the invites table in Neon if it isn't there yet, and ensure code & redeemed_at columns exist."""
+    """Create the invites table in Neon if it isn't there yet, and ensure code column exists."""
     global _db
     db = db_connect()
     if not db:
@@ -102,11 +103,9 @@ def ensure_invites_table():
             cur.execute("""CREATE TABLE IF NOT EXISTS invites (
                 handle TEXT PRIMARY KEY,
                 code TEXT,
-                redeemed_at TIMESTAMPTZ,
                 added_at TIMESTAMPTZ DEFAULT NOW()
             )""")
             cur.execute("ALTER TABLE invites ADD COLUMN IF NOT EXISTS code TEXT")
-            cur.execute("ALTER TABLE invites ADD COLUMN IF NOT EXISTS redeemed_at TIMESTAMPTZ")
         db.commit()
     except Exception as e:
         try:
@@ -125,13 +124,12 @@ def load_invites_from_db():
         return None
     try:
         with db.cursor() as cur:
-            cur.execute("SELECT handle, code, redeemed_at FROM invites")
+            cur.execute("SELECT handle, code FROM invites")
             details = {}
             for row in cur.fetchall():
                 h = row[0].strip().lstrip("~").lower()
-                code = row[1] if row[1] else None
-                redeemed = row[2] is not None
-                details[h] = {"code": code, "redeemed": redeemed}
+                code = row[1].strip().upper() if row[1] else None
+                details[h] = {"code": code}
             return details
     except Exception as e:
         log(f"Website: couldn't read invites from Neon ({type(e).__name__}: {e}).")
@@ -143,20 +141,23 @@ def refresh_invites():
     """Re-sync the invite cache from Neon (called on startup and periodically)."""
     db_inv = load_invites_from_db()
     with _invites_lock:
+        INVITES.clear()
+        INVITE_DETAILS.clear()
+        INVITE_CODES.clear()
+        env_set = env_invites()
         if db_inv is not None:
-            INVITES.clear()
-            INVITE_DETAILS.clear()
-            env_set = env_invites()
             INVITES.update(env_set | set(db_inv.keys()))
             INVITE_DETAILS.update(db_inv)
+            for h, info in db_inv.items():
+                if info.get("code"):
+                    INVITE_CODES[info["code"].upper()] = h
             for h in env_set:
-                INVITE_DETAILS.setdefault(h, {"code": None, "redeemed": True})
+                INVITE_DETAILS.setdefault(h, {"code": None})
         else:
-            env_set = env_invites()
             INVITES.update(env_set)
             for h in env_set:
-                INVITE_DETAILS.setdefault(h, {"code": None, "redeemed": True})
-    log(f"Website: invite list refreshed ({len(INVITES)} invited).")
+                INVITE_DETAILS.setdefault(h, {"code": None})
+    log(f"Website: invite list refreshed ({len(INVITES)} invited, {len(INVITE_CODES)} codes).")
 
 
 def invited(handle):
@@ -166,7 +167,7 @@ def invited(handle):
 
 
 def generate_invite_code(handle):
-    """Generate and store a new one-time invite code for this handle."""
+    """Generate and store a permanent invite code for this handle."""
     global _db
     name = str(handle or "").strip().lstrip("~").lower()
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -174,14 +175,18 @@ def generate_invite_code(handle):
     code = f"REMI-{suffix}"
     with _invites_lock:
         INVITES.add(name)
-        INVITE_DETAILS[name] = {"code": code, "redeemed": False}
+        old_code = (INVITE_DETAILS.get(name) or {}).get("code")
+        if old_code and old_code.upper() in INVITE_CODES:
+            del INVITE_CODES[old_code.upper()]
+        INVITE_DETAILS[name] = {"code": code}
+        INVITE_CODES[code.upper()] = name
     db = db_connect()
     if db:
         try:
             with db.cursor() as cur:
-                cur.execute("""INSERT INTO invites (handle, code, redeemed_at)
-                               VALUES (%s, %s, NULL)
-                               ON CONFLICT (handle) DO UPDATE SET code = EXCLUDED.code, redeemed_at = NULL""",
+                cur.execute("""INSERT INTO invites (handle, code)
+                               VALUES (%s, %s)
+                               ON CONFLICT (handle) DO UPDATE SET code = EXCLUDED.code""",
                             (name, code))
             db.commit()
             log(f"Website: generated invite code {code} for ~{name}.")
@@ -195,44 +200,22 @@ def generate_invite_code(handle):
     return code
 
 
-def redeem_invite(handle):
-    """Marks an invite as redeemed upon successful sign-in."""
-    global _db
-    name = str(handle or "").strip().lstrip("~").lower()
-    with _invites_lock:
-        if name in INVITE_DETAILS:
-            INVITE_DETAILS[name]["redeemed"] = True
-    db = db_connect()
-    if db:
-        try:
-            with db.cursor() as cur:
-                cur.execute("UPDATE invites SET redeemed_at = NOW() WHERE handle = %s", (name,))
-            db.commit()
-            log(f"Website: invite redeemed for ~{name}.")
-        except Exception as e:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            _db = None
-
-
 def add_invite(handle):
     """Add a handle to the invite list (cache + Neon if configured). Returns whether it worked."""
     global _db
     name = str(handle or "").strip().lstrip("~").lower()
     with _invites_lock:
         INVITES.add(name)
-        INVITE_DETAILS[name] = {"code": None, "redeemed": False}
+        INVITE_DETAILS.setdefault(name, {"code": None})
     db = db_connect()
     if not db:
         log(f"Website: invited ~{name} (cache only, no Neon).")
         return True
     try:
         with db.cursor() as cur:
-            cur.execute("""INSERT INTO invites (handle, code, redeemed_at)
-                           VALUES (%s, NULL, NULL)
-                           ON CONFLICT (handle) DO UPDATE SET code = NULL, redeemed_at = NULL""",
+            cur.execute("""INSERT INTO invites (handle, code)
+                           VALUES (%s, NULL)
+                           ON CONFLICT (handle) DO NOTHING""",
                         (name,))
         db.commit()
         log(f"Website: invited ~{name}.")
@@ -248,12 +231,14 @@ def add_invite(handle):
 
 
 def remove_invite(handle):
-    """Remove a handle from the invite list (cache + Neon if configured). Returns whether it worked."""
+    """Remove a handle and its code from the invite list."""
     global _db
     name = str(handle or "").strip().lstrip("~").lower()
     with _invites_lock:
         INVITES.discard(name)
-        INVITE_DETAILS.pop(name, None)
+        info = INVITE_DETAILS.pop(name, None)
+        if info and info.get("code"):
+            INVITE_CODES.pop(info["code"].upper(), None)
     sessions.drop(handle=name)
     home = USERS_DIR / name
     if home.exists():
@@ -575,7 +560,6 @@ def welcome(run, handle):
             shutil.rmtree(run.home, ignore_errors=True)
     finally:
         scheduler.hold(home, False)
-    redeem_invite(name)
     log(f"Website: ~{name} signed in{' for the first time' if new else ''}.")
     return home
 
@@ -791,8 +775,7 @@ class Handler(BaseHTTPRequestHandler):
             with _invites_lock:
                 info = INVITE_DETAILS.get(target_handle, {})
                 stored_code = (info.get("code") or "").strip().upper()
-                is_redeemed = info.get("redeemed", False) or (USERS_DIR / target_handle / "cookies.json").exists()
-            if stored_code and not is_redeemed and not is_admin(target_handle):
+            if stored_code and not is_admin(target_handle):
                 provided_code = str(asked.get("code") or "").strip().upper()
                 if provided_code != stored_code:
                     return self.answer_json({"error": "Valid invite code required to sign in"}, status=403)
@@ -812,42 +795,37 @@ class Handler(BaseHTTPRequestHandler):
         return self.answer_json(said, status, cookies=[self.cookie(PENDING, pending, SIGN_IN_KEPT)])
 
     def check_invite(self):
-        """POST /api/invited {"handle", "code"}: whether that handle may sign in (the sign-in page asks before the password)."""
+        """POST /api/invited {"code"} or {"handle"}: validates code and returns associated handle."""
         try:
             asked = json.loads(self.body() or b"{}")
         except ValueError:
             asked = {}
         if not isinstance(asked, dict):
             return self.answer_json({"invited": False, "error": "Invalid request"})
-        h = str(asked.get("handle") or "").strip().lstrip("~").lower()
-        if not h:
-            return self.answer_json({"invited": False, "error": "Type your handle"})
-        if "*" in INVITES:
-            return self.answer_json({"invited": True, "needs_code": False})
-        if not invited(h):
-            return self.answer_json({"invited": False, "error": f"RemiDex is invite-only right now, and ~{h} isn't on the list."})
-
-        with _invites_lock:
-            info = INVITE_DETAILS.get(h, {})
-            stored_code = (info.get("code") or "").strip().upper()
-            is_redeemed = info.get("redeemed", False) or (USERS_DIR / h / "cookies.json").exists()
-
-        if is_redeemed or is_admin(h):
-            return self.answer_json({"invited": True, "needs_code": False})
-
-        if not stored_code:
-            if not DATABASE_URL:
-                return self.answer_json({"invited": True, "needs_code": False})
-            return self.answer_json({"invited": False, "needs_code": True, "error": f"~{h} is on the list, but an invite code hasn't been generated yet. Ask your admin."})
 
         code = str(asked.get("code") or "").strip().upper()
-        if not code:
-            return self.answer_json({"invited": True, "needs_code": True})
+        h = str(asked.get("handle") or "").strip().lstrip("~").lower()
 
-        if code != stored_code:
-            return self.answer_json({"invited": False, "needs_code": True, "error": "That invite code didn't match. Check the code with your admin."})
+        if "*" in INVITES:
+            return self.answer_json({"invited": True, "handle": h or "guest"})
 
-        return self.answer_json({"invited": True, "needs_code": False, "verified": True})
+        # Code provided (primary flow from sign-in page):
+        if code:
+            with _invites_lock:
+                target = INVITE_CODES.get(code)
+                if not target and code.lstrip("~").lower() in ADMINS:
+                    target = code.lstrip("~").lower()
+            if target and invited(target):
+                return self.answer_json({"invited": True, "handle": target})
+            return self.answer_json({"invited": False, "error": "Invalid invite code. Check with your admin."})
+
+        # Handle provided (fallback or test flow):
+        if h:
+            if not invited(h):
+                return self.answer_json({"invited": False, "error": f"RemiDex is invite-only right now, and ~{h} isn't on the list."})
+            return self.answer_json({"invited": True, "handle": h})
+
+        return self.answer_json({"invited": False, "error": "Enter your invite code"})
 
     def _require_admin(self, token, home):
         """403 if the requester isn't an admin; None if they are."""
@@ -866,11 +844,9 @@ class Handler(BaseHTTPRequestHandler):
                 if h == "*":
                     continue
                 info = INVITE_DETAILS.get(h, {})
-                is_redeemed = info.get("redeemed", False) or (USERS_DIR / h / "cookies.json").exists()
                 invites_list.append({
                     "handle": h,
                     "code": info.get("code"),
-                    "redeemed": is_redeemed,
                     "admin": is_admin(h),
                 })
             return self.answer_json({"invites": invites_list, "admins": sorted(ADMINS)})
