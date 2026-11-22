@@ -343,7 +343,9 @@ class Site:
             content_type = "image/gif"
         elif path.suffix == ".webp":
             content_type = "image/webp"
-        elif path.suffix in (".mp4", ".mov", ".webm"):
+        elif path.suffix == ".mov":
+            content_type = "video/quicktime"
+        elif path.suffix in (".mp4", ".webm"):
             content_type = f"video/{path.suffix[1:]}"
 
         file_data = path.read_bytes()

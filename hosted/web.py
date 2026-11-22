@@ -81,6 +81,16 @@ def db_connect():
         return None
     try:
         import psycopg2
+        if _db is not None and not _db.closed:
+            try:
+                with _db.cursor() as cur:
+                    cur.execute("SELECT 1")
+            except Exception:
+                try:
+                    _db.close()
+                except Exception:
+                    pass
+                _db = None
         if _db is None or _db.closed:
             _db = psycopg2.connect(DATABASE_URL)
         return _db
@@ -193,6 +203,7 @@ def refresh_invites():
                     db.rollback()
                 except Exception:
                     pass
+                _db = None
                 log(f"Website: couldn't save admin code to Neon ({type(e).__name__}: {e}).")
 
     log(f"Website: invite list refreshed ({len(INVITES)} invited, {len(INVITE_CODES)} codes).")
@@ -607,14 +618,14 @@ def tidy_sign_ins():
     with signins_lock:
         old = [t for t, r in signins.items() if time.time() - r.at > SIGN_IN_KEPT]
         gone = [signins.pop(t) for t in old]
+        for address in [a for a, times in list(started_from.items()) if all(time.time() - t > SIGN_INS_PER_ADDRESS[1] for t in times)]:
+            started_from.pop(address, None)
     for run in gone:
         desks.stop(run.home)
         shutil.rmtree(run.home, ignore_errors=True)
     for folder in SIGNING_IN_DIR.iterdir() if SIGNING_IN_DIR.is_dir() else []:  # (left by a restart)
         if folder not in {r.home for r in signins.values()} and time.time() - folder.stat().st_mtime > SIGN_IN_KEPT:
             shutil.rmtree(folder, ignore_errors=True)
-    for address in [a for a, times in started_from.items() if all(time.time() - t > SIGN_INS_PER_ADDRESS[1] for t in times)]:
-        del started_from[address]
 
 
 def housekeeping():
@@ -897,8 +908,8 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             asked = {}
         handle = str((asked or {}).get("handle", "")).strip().lstrip("~").lower()
-        if not handle:
-            return self.answer_json({"error": "handle required"}, status=400)
+        if not handle or not HANDLE.fullmatch(handle):
+            return self.answer_json({"error": "valid handle required"}, status=400)
         ok = add_invite(handle)
         return self.answer_json({"ok": ok, "handle": handle})
 
@@ -922,14 +933,17 @@ class Handler(BaseHTTPRequestHandler):
         blocked = self._require_admin(token, home)
         if blocked:
             return blocked
-        handle = path.split("/api/invites/", 1)[-1].split("?", 1)[0]
+        handle = path.split("/api/invites/", 1)[-1].split("?", 1)[0].strip().lstrip("~").lower()
         if not handle:
             return self.answer_json({"error": "handle required"}, status=400)
+        if is_admin(handle):
+            return self.answer_json({"error": "cannot remove an admin from invites"}, status=400)
         ok = remove_invite(handle)
         return self.answer_json({"ok": ok, "handle": handle})
 
     def ask_desk(self, home, method, path, body=None):
         """One question for home's dashboard, answered there: (status, its answer as JSON, or {}); (0, {}) if it can't be asked."""
+        connection = None
         try:
             port = desks.port(home)
             connection = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
@@ -939,14 +953,20 @@ class Handler(BaseHTTPRequestHandler):
             connection.request(method, path, body=body, headers=headers)
             answer = connection.getresponse()
             raw = answer.read()
-            connection.close()
+            status = answer.status
         except (OSError, RuntimeError, http.client.HTTPException):
             return 0, {}
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
         try:
             said = json.loads(raw) if raw else {}
         except ValueError:
             said = {}
-        return answer.status, said if isinstance(said, dict) else {}
+        return status, said if isinstance(said, dict) else {}
 
     # ---- signing out
     def sign_out(self, token, home):

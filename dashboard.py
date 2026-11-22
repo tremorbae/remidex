@@ -979,8 +979,9 @@ def sign_in_view():
     own errors; "handle": who the last one signed in as, for the website); and your profile's colour (for the page's
     colour theme)."""
     hue = bot.read_json(bot.DASH_DIR / "look.json").get("color")
-    return {"signed_in": not browser.signed_out(), "running": _sign_in["running"], "step": _sign_in["step"], "error": _sign_in["error"],
-            "attempt": _sign_in["attempt"], "handle": _sign_in["handle"], "hue": hue if isinstance(hue, (int, float)) else 204}
+    with _sign_in_lock:
+        return {"signed_in": not browser.signed_out(), "running": _sign_in["running"], "step": _sign_in["step"], "error": _sign_in["error"],
+                "attempt": _sign_in["attempt"], "handle": _sign_in["handle"], "hue": hue if isinstance(hue, (int, float)) else 204}
 
 
 def status_body():

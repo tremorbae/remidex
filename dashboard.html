@@ -3171,7 +3171,10 @@ function listen() {
   stream.onerror = () => {
     live = false;
     lostAt = lostAt || Date.now();
-    if (stream.readyState === EventSource.CLOSED) setTimeout(listen, 5000);  // (refused outright, as while it restarts: the browser won't ask again by itself)
+    if (stream.readyState === EventSource.CLOSED) {
+      try { stream.close(); } catch (e) {}
+      setTimeout(listen, 5000);  // (refused outright, as while it restarts: the browser won't ask again by itself)
+    }
   };
 }
 if ("EventSource" in window) listen();
