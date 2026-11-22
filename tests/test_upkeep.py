@@ -1,6 +1,6 @@
 """The app keeping itself in good shape: the bot's own profile views don't crowd the feed or the log, hiccups it gets over
-are calm notes, the log is trimmed without counting anything twice, sure crafts go before long shots, the bot's
-browser is Playwright's own and draws calmly, and RemiDex's logo is made from RemiliaNET's whatever
+are calm notes, the log is trimmed without counting anything twice, sure crafts go before long shots, the bot
+uses pure HTTP without Chromium or Playwright, and RemiDex's logo is made from RemiliaNET's whatever
 size the site draws it at (temp files, fakes; nothing real is run)."""
 import tempfile
 import time
@@ -77,39 +77,13 @@ order = [c[0] for c in pb.craft_candidates(lotus, True, settings, fallback=False
 ok(moss in order and all(pb.long_shot(pb.recipe_named(label)) for label in order[order.index(moss):]), f"the 1-in-40 Moss smash after every sure step ({order})")
 ok(pb.next_craft(lotus, True, settings, {})[0] != moss, "so the Green Beetles go to a sure step first")
 
-# ---- the bot's browser: Playwright's own headless Chromium, drawing calmly
+# ---- the bot's HTTP client: direct HTTP, no Chromium or Playwright
 from remidex import browser  # noqa: E402
-launched, scripts = [], []
-
-
-class Page:
-    def goto(self, *a, **k):
-        pass
-
-
-class Context:
-    pages = []
-
-    def add_init_script(self, script):
-        scripts.append(script)
-
-    def add_cookies(self, cookies):
-        pass
-
-    def new_page(self):
-        return Page()
-
-
-fake = type("Playwright", (), {"chromium": type("Chromium", (), {"launch_persistent_context": staticmethod(lambda folder, **k: (launched.append((folder, k)), Context())[1])})()})()
-support.patch(PROFILE_DIR=tmp / "profile", COOKIES_FILE=tmp / "cookies.json")
-browser.Site(fake)
-folder, how = launched[-1]
-ok("channel" not in how and how.get("headless") is True, f"Playwright's own headless Chromium ({sorted(how)})")
-ok(folder == tmp / "profile" and 'PROFILE_DIR = APP_DIR / "browser-profile"' in Path(browser.__file__).read_text(), "in its own profile folder")
-ok(scripts == [browser.CALM] and "requestAnimationFrame" in browser.CALM, "the page draws once a second, not 60 times")
-browser.Site(fake, calm=False)
-ok(scripts == [browser.CALM], "signing in leaves RemiliaNET's pages as they are")
-ok("playwright install --with-deps --only-shell chromium" in (support.ROOT / "Dockerfile").read_text(), "the server gets that Chromium, and only that browser")
+support.patch(COOKIES_FILE=tmp / "cookies.json")
+site = browser.Site()
+ok(hasattr(site, "api") and hasattr(site, "cookies"), "pure HTTP client session without browser")
+dockerfile = (support.ROOT / "Dockerfile").read_text().lower()
+ok("playwright" not in dockerfile and "chromium" not in dockerfile, "the server has no Playwright or Chromium")
 
 # ---- RemiDex's logo: the flower from RemiliaNET's own logo, whatever size the site draws that at (made-up logos)
 import xml.dom.minidom  # noqa: E402

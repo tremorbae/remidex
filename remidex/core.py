@@ -8,7 +8,8 @@ import threading
 import time
 from datetime import datetime
 
-from playwright.sync_api import Error as PlaywrightError, sync_playwright  # noqa: F401 (other parts import these from here)
+# Legacy error alias for backward compatibility
+PlaywrightError = OSError
 
 from remidex.places import APP_DIR, LOG_FILE, SHARED_DIR, homes  # noqa: F401 (other parts import these from here)
 

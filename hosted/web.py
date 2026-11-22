@@ -54,7 +54,142 @@ SESSION_FOR = 30 * 86400  # unused this long, a RemiDex sign-in ends
 HANDLE = re.compile(r"^[a-z0-9_]{1,40}$")  # a RemiliaNET handle, as a folder name
 # Invite-only: the RemiliaNET handles that may use RemiDex (comma-separated; "*" lets anyone in). Anyone else is turned
 # away before typing a password, and isn't let in (nor their bot run) even with an old RemiDex sign-in.
-INVITES = {h.strip().lstrip("~").lower() for h in (os.environ.get("REMIDEX_INVITES") or "").split(",") if h.strip()}
+# Invites come from REMIDEX_INVITES (static env var) and Neon (DATABASE_URL, refreshed periodically).
+DATABASE_URL = os.environ.get("DATABASE_URL")  # Neon connection string
+INVITE_REFRESH = int(os.environ.get("REMIDEX_INVITE_REFRESH") or 60)  # seconds between Neon re-fetches
+ADMINS = {h.strip().lower() for h in (os.environ.get("REMIDEX_ADMINS") or "").split(",") if h.strip()}  # who can manage invites
+
+_invites_lock = threading.Lock()
+INVITES = set()  # the invite cache (env + Neon); mutated in place
+_db = None  # Neon connection, lazy
+
+
+def env_invites():
+    """Handles from the REMIDEX_INVITES env var (comma-separated, "*" lets anyone in)."""
+    return {h.strip().lstrip("~").lower() for h in (os.environ.get("REMIDEX_INVITES") or "").split(",") if h.strip()}
+
+
+def db_connect():
+    """A Neon connection, or None if DATABASE_URL isn't set or Neon can't be reached."""
+    global _db
+    if not DATABASE_URL:
+        return None
+    try:
+        import psycopg2
+        if _db is None or _db.closed:
+            _db = psycopg2.connect(DATABASE_URL)
+        return _db
+    except ImportError:
+        log("Website: psycopg2 not installed; install it to use Neon invites.")
+        return None
+    except Exception as e:
+        log(f"Website: can't reach Neon ({type(e).__name__}: {e}); using cached invites.")
+        _db = None
+        return None
+
+
+def ensure_invites_table():
+    """Create the invites table in Neon if it isn't there yet."""
+    db = db_connect()
+    if not db:
+        return
+    try:
+        with db.cursor() as cur:
+            cur.execute("""CREATE TABLE IF NOT EXISTS invites (
+                handle TEXT PRIMARY KEY,
+                added_at TIMESTAMPTZ DEFAULT NOW()
+            )""")
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log(f"Website: couldn't create invites table ({type(e).__name__}: {e}).")
+
+
+def load_invites_from_db():
+    """All invited handles from Neon."""
+    db = db_connect()
+    if not db:
+        return set()
+    try:
+        with db.cursor() as cur:
+            cur.execute("SELECT handle FROM invites")
+            return {row[0].strip().lstrip("~").lower() for row in cur.fetchall()}
+    except Exception as e:
+        log(f"Website: couldn't read invites from Neon ({type(e).__name__}: {e}).")
+        return set()
+
+
+def refresh_invites():
+    """Re-sync the invite cache from Neon (called on startup and periodically)."""
+    with _invites_lock:
+        INVITES.clear()
+        INVITES.update(env_invites() | load_invites_from_db())
+    log(f"Website: invite list refreshed ({len(INVITES)} invited).")
+
+
+def invited(handle):
+    """Whether this RemiliaNET handle may use RemiDex (see INVITES)."""
+    with _invites_lock:
+        return "*" in INVITES or str(handle or "").strip().lstrip("~").lower() in INVITES
+
+
+def add_invite(handle):
+    """Add a handle to the invite list (cache + Neon if configured). Returns whether it worked."""
+    name = str(handle or "").strip().lstrip("~").lower()
+    with _invites_lock:
+        INVITES.add(name)
+    db = db_connect()
+    if not db:
+        log(f"Website: invited ~{name} (cache only, no Neon).")
+        return True
+    try:
+        with db.cursor() as cur:
+            cur.execute("INSERT INTO invites (handle) VALUES (%s) ON CONFLICT (handle) DO NOTHING", (name,))
+        db.commit()
+        log(f"Website: invited ~{name}.")
+        return True
+    except Exception as e:
+        db.rollback()
+        log(f"Website: couldn't save ~{name} to Neon ({type(e).__name__}: {e}); kept in cache.")
+        return True
+
+
+def remove_invite(handle):
+    """Remove a handle from the invite list (cache + Neon if configured). Returns whether it worked."""
+    name = str(handle or "").strip().lstrip("~").lower()
+    with _invites_lock:
+        INVITES.discard(name)
+    db = db_connect()
+    if not db:
+        log(f"Website: uninvited ~{name} (cache only, no Neon).")
+        return True
+    try:
+        with db.cursor() as cur:
+            cur.execute("DELETE FROM invites WHERE handle = %s", (name,))
+        db.commit()
+        log(f"Website: uninvited ~{name}.")
+        return True
+    except Exception as e:
+        db.rollback()
+        log(f"Website: couldn't remove ~{name} from Neon ({type(e).__name__}: {e}); kept out of cache.")
+        return True
+
+
+def is_admin(handle):
+    """Whether this handle may add or remove invites."""
+    return str(handle or "").strip().lower() in ADMINS
+
+
+def _invite_refresh_loop():
+    """Re-fetch invites from Neon every INVITE_REFRESH seconds."""
+    while True:
+        try:
+            time.sleep(INVITE_REFRESH)
+            refresh_invites()
+        except Exception as e:
+            log(f"Website: invite refresh loop: {type(e).__name__}: {e}")
+
+
 TICK = 2  # seconds between the scheduler's looks: how soon a change on someone's dashboard starts a round
 DESK_IDLE = 10 * 60  # a dashboard nobody has asked anything of for this long is stopped (it starts again on the next visit)
 DESK_START = 25  # how long a dashboard gets to start (seconds)
@@ -72,19 +207,18 @@ ROUND_COMMAND = [sys.executable, str(ROOT / "poke_browser.py"), "--round"]  # a 
 
 
 def rounds_most():
-    """Rounds at once: REMIDEX_ROUNDS, else what the server's memory allows (a round's browser takes about 350 MB, and the
-    website and the dashboards need some 700 MB besides)."""
+    """Rounds at once: REMIDEX_ROUNDS, else what the server's memory allows."""
     if os.environ.get("REMIDEX_ROUNDS"):
         return max(1, int(os.environ["REMIDEX_ROUNDS"]))
     try:
         memory = int(Path("/sys/fs/cgroup/memory.max").read_text())
     except (OSError, ValueError):
         return 2
-    return max(1, min(12, (memory - 700 * 2 ** 20) // (350 * 2 ** 20)))
+    return max(1, min(12, (memory - 300 * 2 ** 20) // (50 * 2 ** 20)))
 
 
 def stop(proc):
-    """Stops a program this started, and everything it started (a bot's browser, say)."""
+    """Stops a program this started, and everything it started."""
     if proc is None or proc.poll() is not None:
         return
     try:
@@ -302,11 +436,6 @@ sessions, desks, scheduler = None, Desks(), None
 signins, signins_lock, started_from = {}, threading.Lock(), {}  # pending token -> SignIn; address -> [when each sign-in started]
 
 
-def invited(handle):
-    """Whether this RemiliaNET handle may use RemiDex (see INVITES)."""
-    return "*" in INVITES or str(handle or "").strip().lstrip("~").lower() in INVITES
-
-
 def signed_in(home):
     """Whether home's bot has a RemiliaNET sign-in that works (as far as it knows)."""
     return home is not None and (home / "cookies.json").exists() and not read_json(home / "state.json").get("needs_login")
@@ -328,9 +457,6 @@ def welcome(run, handle):
             run.home.rename(home)
         else:
             write_json(home / "cookies.json", read_json(run.home / "cookies.json"))
-            if not scheduler.running(home) and (run.home / "browser-profile").is_dir():
-                shutil.rmtree(home / "browser-profile", ignore_errors=True)  # (signed out: a fresh browser profile with the new sign-in)
-                (run.home / "browser-profile").rename(home / "browser-profile")
             with editing(home / "state.json"):
                 state = read_json(home / "state.json")
                 state.pop("needs_login", None)
@@ -423,7 +549,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def answer_json(self, value, status=200, cookies=()):
         self.answer(status, json.dumps(value).encode(), "application/json", cookies)
@@ -453,13 +582,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.route()
 
+    def do_DELETE(self):
+        self.route()
+
     def route(self):
         path = self.path.split("?", 1)[0]
         if path == "/healthz":  # (the host's own check: nothing in it)
             return self.answer(200, b"ok")
         if not self.our_host():
             return self.answer(403, b"Forbidden")
-        if self.command == "POST" and not self.our_origin():
+        if self.command in ("POST", "DELETE") and not self.our_origin():
             return self.answer(403, b"Forbidden")
         token, home = self.session()
         if path in ("/logo.svg", "/icon.svg") or path.startswith("/public/"):
@@ -468,6 +600,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.go_to("/") if signed_in(home) else self.answer(200, sign_in_page(), "text/html; charset=utf-8")
         if path == "/api/invited" and self.command == "POST":
             return self.check_invite()
+        if path == "/api/invites" and self.command == "GET":
+            return self.list_invites(token, home)
+        if path == "/api/invites" and self.command == "POST":
+            return self.add_invite_api(token, home)
+        if path.startswith("/api/invites/") and self.command == "DELETE":
+            return self.remove_invite_api(token, home, path)
         if path.startswith("/api/sign-in"):
             return self.sign_in(path, home)
         if path == "/api/sign-out":
@@ -558,6 +696,46 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             asked = {}
         return self.answer_json({"invited": isinstance(asked, dict) and invited(asked.get("handle"))})
+
+    def _require_admin(self, token, home):
+        """403 if the requester isn't an admin; None if they are."""
+        if not is_admin(sessions.who(token) if token else None):
+            return self.answer_json({"error": "invite management is admin-only"}, status=403)
+        return None
+
+    def list_invites(self, token, home):
+        """GET /api/invites: the current invite list (admin only)."""
+        blocked = self._require_admin(token, home)
+        if blocked:
+            return blocked
+        with _invites_lock:
+            return self.answer_json({"invites": sorted(INVITES), "admins": sorted(ADMINS)})
+
+    def add_invite_api(self, token, home):
+        """POST /api/invites {"handle": "calm"}: invite someone (admin only)."""
+        blocked = self._require_admin(token, home)
+        if blocked:
+            return blocked
+        try:
+            asked = json.loads(self.body() or b"{}")
+        except ValueError:
+            asked = {}
+        handle = asked.get("handle")
+        if not handle:
+            return self.answer_json({"error": "handle required"}, status=400)
+        ok = add_invite(handle)
+        return self.answer_json({"ok": ok, "handle": handle})
+
+    def remove_invite_api(self, token, home, path):
+        """DELETE /api/invites/{handle}: uninvite someone (admin only)."""
+        blocked = self._require_admin(token, home)
+        if blocked:
+            return blocked
+        handle = path.split("/api/invites/", 1)[-1].split("?", 1)[0]
+        if not handle:
+            return self.answer_json({"error": "handle required"}, status=400)
+        ok = remove_invite(handle)
+        return self.answer_json({"ok": ok, "handle": handle})
 
     def ask_desk(self, home, method, path, body=None):
         """One question for home's dashboard, answered there: (status, its answer as JSON, or {}); (0, {}) if it can't be asked."""
@@ -681,8 +859,11 @@ def main():
     sessions = Sessions(SESSIONS_FILE)
     scheduler = Scheduler(rounds_most())
     scheduler.start()
+    refresh_invites()  # load invites from Neon + env var
+    ensure_invites_table()  # make sure the Neon invites table exists
     threading.Thread(target=social.watch_feed, daemon=True).start()
     threading.Thread(target=housekeeping, daemon=True).start()
+    threading.Thread(target=_invite_refresh_loop, daemon=True).start()  # keep Neon invites fresh
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
 

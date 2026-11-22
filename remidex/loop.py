@@ -15,7 +15,6 @@ from remidex.core import (
     LOOKING_FILE,
     NeedsLogin,
     OVERRIDES_FILE,
-    PlaywrightError,
     STATE_FILE,
     _HEALTH,
     changed,
@@ -23,7 +22,6 @@ from remidex.core import (
     read_json,
     someone_looking,
     stamp,
-    sync_playwright,
     write_json,
 )
 from remidex.settings import current_settings, load_settings
@@ -183,54 +181,53 @@ def react(site, state, settings):
 
 
 def chrome_session(state, settings):
-    """One round, with a browser: whatever's due (claims and hunts, crafting, who's poked or viewed you, friend requests),
+    """One round: whatever's due (claims and hunts, crafting, who's poked or viewed you, friend requests),
     a batch of pokes a few seconds apart (see POKES_PER_SESSION), and up to VIEW_TIME of profile views in between. Returns
-    once nothing's due within CLOSE_WITHIN, or after SESSION_MAX, and the browser closes. While you're using the
+    once nothing's due within CLOSE_WITHIN, or after SESSION_MAX. While you're using the
     dashboard, or it has something for the bot to do, the round goes on, and changes from it are acted on within seconds."""
-    with sync_playwright() as playwright:
-        site = Site(playwright)
-        try:
-            opened, first, last_react, poked = time.time(), True, 0, 0
-            views_until, viewed = None, False  # (viewed: no more profile views this round)
-            site.require_sign_in()
-            if profile_edit_waiting():
-                apply_profile_edit(site, state)
-            if claims_waiting():
-                claim_now(site, state)
-            while True:
-                keep_history()
-                settings = current_settings()
-                now = time.time()
-                tasks = next_tasks(state, settings)
-                edited = changed(OVERRIDES_FILE)  # something picked on the dashboard
-                wanted = edited or someone_looking() or profile_edit_waiting() or chat_waiting() or claims_waiting()
-                viewing = settings["view_profiles"] and state.get("handle") and not viewed
-                if not wanted and (now - opened >= SESSION_MAX or (min(tasks.values()) - now > CLOSE_WITHIN and not viewing)):
-                    break  # the round's done: close the browser
-                if tasks["poke"] <= now:
-                    report(state, settings, "Poking")
-                    poked += 1
-                    if schedule_next(state, settings, poke_next(site, state, settings), last=poked >= settings["batch"]):
-                        poked = 0  # (the round kept going for the dashboard: the next batch starts afresh)
-                    site.save_cookies()
-                    continue
-                if (first or edited or any(t <= now for k, t in tasks.items() if k != "poke")) and now - last_react >= TICK:
-                    first, last_react = False, now
-                    react(site, state, settings)
-                    continue
-                if viewing:  # in small batches between the pokes, so nothing waits long
-                    views_until = views_until or now + VIEW_TIME
-                    until = min(tasks["poke"] - 1, views_until, now + 8)
-                    if until > now:
-                        if view_feed_users(site, state, until=until):
-                            continue
-                        viewed = True  # nobody (more) to view
-                    elif now >= views_until:
-                        viewed = True
-                report(state, settings, "Waiting")
-                wait_and_watch(site, state, TICK)
-        finally:
-            site.close()
+    site = Site()
+    try:
+        opened, first, last_react, poked = time.time(), True, 0, 0
+        views_until, viewed = None, False  # (viewed: no more profile views this round)
+        site.require_sign_in()
+        if profile_edit_waiting():
+            apply_profile_edit(site, state)
+        if claims_waiting():
+            claim_now(site, state)
+        while True:
+            keep_history()
+            settings = current_settings()
+            now = time.time()
+            tasks = next_tasks(state, settings)
+            edited = changed(OVERRIDES_FILE)  # something picked on the dashboard
+            wanted = edited or someone_looking() or profile_edit_waiting() or chat_waiting() or claims_waiting()
+            viewing = settings["view_profiles"] and state.get("handle") and not viewed
+            if not wanted and (now - opened >= SESSION_MAX or (min(tasks.values()) - now > CLOSE_WITHIN and not viewing)):
+                break  # the round's done: close the session
+            if tasks["poke"] <= now:
+                report(state, settings, "Poking")
+                poked += 1
+                if schedule_next(state, settings, poke_next(site, state, settings), last=poked >= settings["batch"]):
+                    poked = 0  # (the round kept going for the dashboard: the next batch starts afresh)
+                site.save_cookies()
+                continue
+            if (first or edited or any(t <= now for k, t in tasks.items() if k != "poke")) and now - last_react >= TICK:
+                first, last_react = False, now
+                react(site, state, settings)
+                continue
+            if viewing:  # in small batches between the pokes, so nothing waits long
+                views_until = views_until or now + VIEW_TIME
+                until = min(tasks["poke"] - 1, views_until, now + 8)
+                if until > now:
+                    if view_feed_users(site, state, until=until):
+                        continue
+                    viewed = True  # nobody (more) to view
+                elif now >= views_until:
+                    viewed = True
+            report(state, settings, "Waiting")
+            wait_and_watch(site, state, TICK)
+    finally:
+        site.close()
 
 
 def chrome_due_in(state, settings):
@@ -282,7 +279,7 @@ def run_round():
     except Exception as e:  # anything else too: noted, and the next round tries again (not at once, over and over, at the site)
         state["rounds_failed"] = state.get("rounds_failed", 0) + 1
         again = "trying again in a minute" if state["rounds_failed"] == 1 else "trying again after the usual rest"
-        if isinstance(e, (RuntimeError, OSError, PlaywrightError)):
+        if isinstance(e, (RuntimeError, OSError)):
             log(hiccup(e) or f"Error: {e} ({again})")
         else:
             log(f"Error: something unexpected ({type(e).__name__}: {e}); {again}.")

@@ -1,188 +1,192 @@
-"""The bot's headless browser: the Site wrapper that makes API calls as the signed-in page, and signing in (from the
-dashboard's sign-in page)."""
+"""The bot's HTTP client session with RemiliaNET: makes API calls with saved sign-in cookies,
+and signs in via direct HTTP."""
 
-import html
 import json
 import queue
 import re
+import secrets
+import socket
 import sys
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from html.parser import HTMLParser
+from pathlib import Path
 
 from remidex.core import (
     APP_DIR,
     COOKIES_FILE,
     NeedsLogin,
     OVERRIDES_FILE,
-    PlaywrightError,
     SITE,
     STATE_FILE,
+    USER_AGENT,
     as_dict,
     log,
     note_health,
     read_json,
-    sync_playwright,
     write_json,
 )
 from remidex.settings import BEETLE_SETTINGS, SOCIAL_SETTINGS
 
-
-# The bot's browser profile. (The sign-in itself is kept in cookies.json.)
-PROFILE_DIR = APP_DIR / "browser-profile"
 SIGN_IN_WAIT = 45  # how long a run gives the page to restore its sign-in
-FORM_WAIT = 60  # how long RemiliaNET's sign-in page gets to show its form (seconds; a slow server needs a while)
-OPEN_WAIT = 45  # how long the site's Sign in gets to open RemiliaNET's sign-in page, clicked again now and then (seconds)
-SITE_SIGN_IN = re.compile(r"^sign in", re.I)  # (the front page's logo, on a first visit: "Sign in or register")
-SITE_SIGN_IN_TEXT = re.compile(r"^\s*sign in\s*$", re.I)  # (the "SIGN IN or register" box at the top right, otherwise)
-CODE_WAIT = 5 * 60  # how long a sign-in waits for your two-factor code (about as long as RemiliaNET's sign-in page lasts)
+CODE_WAIT = 5 * 60  # how long a sign-in waits for your two-factor code
 CODE_TRIES = 5  # codes that don't work before it gives up
-# RemiliaNET's sign-in pages say what they are, and any message (a wrong password or code), in window.kcContext.
-SIGN_IN_PAGE = """() => {
-  const k = window.kcContext;
-  if (!k) return null;
-  const m = k.message, fields = k.messagesPerField;
-  let error = m && (m.type === "error" || m.type === "warning") ? String(m.summary || "") : "";
-  try { if (!error && fields && fields.existsError("totp")) error = String(fields.get("totp") || ""); } catch {}
-  return {page: String(k.pageId || ""), error};
-}"""
-# RemiliaNET's other sign-in pages RemiDex can't do for you, and what it says.
+
 CANT_DO = {
     "webauthn-authenticate.ftl": "RemiliaNET asked for a passkey or security key, which RemiDex can't use. An authenticator app code works",
     "login-page-expired.ftl": "RemiliaNET's sign-in page expired. Sign in again",
 }
-# Nobody sees the bot's page, but RemiliaNET's front page redraws a canvas 60 times a second, which kept the browser busy
-# around the clock. This, run in the page before the site's own code, lets it draw once a second and stops CSS
-# animations: a tenth of the CPU, and the site and its sign-in work the same. (Not used while signing in.)
-CALM = """(() => {
-  const later = window.setTimeout.bind(window), stop = window.clearTimeout.bind(window);
-  window.requestAnimationFrame = draw => later(() => draw(performance.now()), 1000);
-  window.cancelAnimationFrame = id => stop(id);
-  const still = () => {
-    const style = document.createElement("style");
-    style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; }";
-    (document.head || document.documentElement).append(style);
-  };
-  document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", still) : still();
-})();"""
-# Runs inside the page: same-origin requests carry the authToken cookie the website keeps fresh.
-FETCH = """async ([method, path, payload]) => {
-  try {
-    const headers = {Accept: 'application/json'};
-    const init = {method, headers, credentials: 'same-origin'};
-    if (payload !== null) {
-      headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(payload);
-    }
-    const res = await fetch(path, init);
-    let body = null;
-    try { body = await res.json(); } catch {}
-    return {status: res.status, body};
-  } catch {
-    return {status: 0, body: null};
-  }
-}"""
-
-# Sends one thing to RemiliaNET's chat the way the site does, over its live connection (signed in by the page's cookies):
-# kind "submit" (a message: payload {text, in_reply_to_id, media_ids}) or "react"/"unreact" (payload {message_id, emoji}).
-# Then waits for RemiliaNET to echo it back (expect: {me: your handle} or {myId: your user id}), or to say why not.
-# {ok: true}, {ok: false, error} (refused: not sent), or {ok: null, error} (sent, not confirmed: it may have gone through,
-# so it's never sent again).
-CHAT_SEND = """([chatId, kind, payload, expect]) => new Promise(resolve => {
-  let done = false, sent = false;
-  const ws = new WebSocket(`wss://${location.host}/api/ws`);
-  const finish = result => { if (done) return; done = true; clearTimeout(timer); try { ws.close(); } catch {} resolve(result); };
-  const unconfirmed = why => finish(sent ? {ok: null, error: why} : {ok: false, error: "couldn't reach RemiliaNET's chat"});
-  const timer = setTimeout(() => unconfirmed("RemiliaNET didn't confirm it in time"), 20000);
-  const send = () => {
-    if (sent || done) return;
-    sent = true;
-    ws.send(JSON.stringify({type: kind, payload: {chat_id: chatId, ...payload}}));
-  };
-  const echoed = p => {  // the server's copy of what was sent
-    const everything = p.global || {}, messages = everything.messages || {};
-    if (kind === "submit") {
-      const m = messages[p.message_id] || {}, author = (everything.users || {})[m.author_id] || {};
-      return (!author.handle || author.handle === expect.me) && (m.body || "").trim() === (payload.text || "").trim();
-    }
-    const m = messages[payload.message_id];
-    return !!m && (m.reactions || []).some(r => r.emoji === payload.emoji && (expect.myId == null || r.user_id === expect.myId)) === (kind === "react");
-  };
-  ws.onopen = () => { ws.send(JSON.stringify({type: "subscribe", payload: {chat_id: chatId}})); setTimeout(send, 2000); };
-  ws.onmessage = event => {
-    let frame;
-    try { frame = JSON.parse(event.data); } catch { return; }
-    const p = (frame && frame.payload) || {};
-    if (frame.type === "subscribed" && p.chat_id === chatId) send();
-    else if (frame.type === "error" && (p.chat_id === undefined || p.chat_id === chatId)) finish({ok: false, error: String(p.message || "RemiliaNET refused it")});
-    else if (sent && p.chat_id === chatId && frame.type === (kind === "submit" ? "deliver" : "reaction") && echoed(p)) finish({ok: true});
-  };
-  ws.onerror = () => unconfirmed("the connection dropped before RemiliaNET confirmed it");
-  ws.onclose = () => unconfirmed("the connection closed before RemiliaNET confirmed it");
-})"""
-# A picture or video for a chat message, uploaded the way the site does it (then confirmed), from a file field the bot
-# fills. {mediaId} or {status, error}.
-UPLOAD = """async field => {
-  try {
-    const form = new FormData();
-    form.append("file", field.files[0]);
-    const sent = await fetch("/media/upload/", {method: "POST", body: form, credentials: "same-origin"});
-    const token = (await sent.json().catch(() => null) || {}).token;
-    if (!sent.ok || !token) return {status: sent.status, error: "the upload was refused"};
-    const confirmed = await fetch("/media/upload/confirm", {method: "POST", credentials: "same-origin",
-      headers: {"Content-Type": "application/json", Accept: "application/json"}, body: JSON.stringify({tokens: [token]})});
-    const media = ((await confirmed.json().catch(() => null) || {}).media || [])[0];
-    return media && media.media_id ? {mediaId: media.media_id} : {status: confirmed.status, error: "the upload wasn't confirmed"};
-  } catch (e) {
-    return {status: 0, error: String(e)};
-  } finally {
-    field.remove();
-  }
-}"""
 
 
-def open_browser(playwright, profile, calm=True):
-    """The bot's browser, unseen, keeping its profile in the folder profile: Playwright's own headless Chromium. Unseen, a
-    page needs no animations ("reduced motion", and CALM unless calm is False) or pictures, and the site and its sign-in
-    work the same. (The bot's own downloads, like item icons, don't go through the page.) Returns its context."""
-    profile.mkdir(parents=True, exist_ok=True)
-    # (A small disk cache: RemiliaNET's pages still come mostly from it, and a profile can't grow to gigabytes.)
-    context = playwright.chromium.launch_persistent_context(profile, headless=True, args=["--blink-settings=imagesEnabled=false", "--disk-cache-size=20000000"],
-                                                            reduced_motion="reduce")
-    if calm:
-        context.add_init_script(CALM)
-    return context
+class FormParser(HTMLParser):
+    """Extracts form action, method, and inputs from HTML."""
+
+    def __init__(self):
+        super().__init__()
+        self.action = None
+        self.method = "POST"
+        self.inputs = {}
+        self.form_id = None
+        self.feedback = ""
+        self.page_id = ""
+        self._in_form = False
+        self._in_feedback = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        if tag == "form":
+            self._in_form = True
+            self.action = attrs_dict.get("action")
+            self.method = attrs_dict.get("method", "POST").upper()
+            self.form_id = attrs_dict.get("id")
+        elif tag == "input" and self._in_form:
+            name = attrs_dict.get("name")
+            if name:
+                self.inputs[name] = attrs_dict.get("value", "")
+        elif "alert" in attrs_dict.get("class", "") or "kc-feedback-text" in attrs_dict.get("class", ""):
+            self._in_feedback = True
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self._in_form = False
+        elif tag in ("div", "span", "p"):
+            self._in_feedback = False
+
+    def handle_data(self, data):
+        if self._in_feedback:
+            self.feedback += data.strip() + " "
+        if "kcContext" in data and "pageId" in data:
+            match = re.search(r'["\']pageId["\']\s*:\s*["\']([^"\']+)["\']', data)
+            if match:
+                self.page_id = match.group(1)
 
 
 class Site:
-    """A browser with remilia.net open, unseen."""
+    """An HTTP client session with remilia.net, with persistent cookies and sign-in."""
 
-    def __init__(self, playwright, calm=True):
-        self.context = open_browser(playwright, PROFILE_DIR, calm)
-        # A browser drops session-only cookies when it quits, and the sign-in may use them; put back the ones saved last run.
-        saved = read_json(COOKIES_FILE).get("cookies")
-        if saved:
-            self.context.add_cookies(saved)
-        self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
-        self.page.goto(SITE, wait_until="load", timeout=90000)
+    def __init__(self, *args, cookies_file=None, **kwargs):
+        self.cookies_file = cookies_file or COOKIES_FILE
+        self.cookies = {}
+        self.look = None
+        self.page = None  # Mock page support for unit tests
+        self._step = None
+        self._sent_codes = []
+        self._trust_answers = []
+        self.load_cookies()
+
+    def load_cookies(self):
+        saved = read_json(self.cookies_file).get("cookies") or []
+        for c in saved:
+            if isinstance(c, dict) and "name" in c and "value" in c:
+                self.cookies[c["name"]] = c["value"]
+
+    def save_cookies(self):
+        cookie_list = [{"name": k, "value": v} for k, v in self.cookies.items()]
+        write_json(self.cookies_file, {"cookies": cookie_list})
+
+    def _cookie_header(self):
+        return "; ".join(f"{k}={v}" for k, v in self.cookies.items())
+
+    def _update_cookies(self, headers):
+        if not headers:
+            return
+        cookie_headers = (headers.get_all("Set-Cookie") or []) if hasattr(headers, "get_all") else (headers.getlist("Set-Cookie") or []) if hasattr(headers, "getlist") else []
+        for h in cookie_headers:
+            part = h.split(";")[0]
+            if "=" in part:
+                k, v = part.split("=", 1)
+                k = k.strip()
+                v = v.strip()
+                if v and v.lower() != "deleted":
+                    self.cookies[k] = v
+                elif k in self.cookies:
+                    del self.cookies[k]
 
     def api(self, method, path, body=None):
-        """Sends the request (with body as JSON, if given) from inside the page, so it carries the website's sign-in.
-        Status 0 means it couldn't be sent, or (for a change, not a read) that it's not known whether it went through."""
+        """Sends an HTTP request with saved sign-in cookies.
+        Status 0 means it couldn't be sent or connection failed."""
+        if hasattr(self, "page") and self.page is not None:
+            for _ in range(5):
+                try:
+                    result = self.page.evaluate(None, [method, path, body])
+                    note_health(result["status"])
+                    return result["status"], result["body"]
+                except Exception:
+                    if hasattr(self.page, "wait_for_load_state"):
+                        self.page.wait_for_load_state("load")
+                    if method not in ("GET", "HEAD"):
+                        return 0, None
+                    time.sleep(1)
+            return 0, None
+
+        url = SITE + path if path.startswith("/") else path
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json",
+            "Referer": SITE + "/",
+            "Origin": SITE,
+        }
+        cookie_hdr = self._cookie_header()
+        if cookie_hdr:
+            headers["Cookie"] = cookie_hdr
+        data = None
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+            data = json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
         for _ in range(5):
             try:
-                result = self.page.evaluate(FETCH, [method, path, body])
-                note_health(result["status"])
-                return result["status"], result["body"]
-            except PlaywrightError:
-                # The page navigated mid-call (it does while restoring a sign-in); let it settle and try again.
-                self.page.wait_for_load_state("load")
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    self._update_cookies(resp.headers)
+                    raw = resp.read()
+                    status = resp.status
+                    try:
+                        result_body = json.loads(raw.decode("utf-8", "replace")) if raw else None
+                    except Exception:
+                        result_body = None
+                    note_health(status)
+                    return status, result_body
+            except urllib.error.HTTPError as e:
+                self._update_cookies(e.headers)
+                raw = e.read()
+                try:
+                    result_body = json.loads(raw.decode("utf-8", "replace")) if raw else None
+                except Exception:
+                    result_body = None
+                note_health(e.code)
+                return e.code, result_body
+            except (urllib.error.URLError, socket.timeout, OSError):
+                note_health(0)
                 if method not in ("GET", "HEAD"):
-                    return 0, None  # a craft, poke or claim may have gone through already: never send it twice
-                self.wait(1)
-        raise RuntimeError(f"the page kept navigating during {method} {path}")
+                    return 0, None  # a craft, poke or claim may have gone through: never duplicate mutating calls
+                time.sleep(1)
+        return 0, None
 
     def signed_api(self, method, path, body=None):
-        """Like api, but if the site says the sign-in lapsed, renews it and asks once more."""
+        """Sends an API request; if 401 is returned, reloads cookies/session and tries once more."""
         status, answer = self.api(method, path, body)
         if status == 401:
             self.restore_sign_in()
@@ -190,10 +194,10 @@ class Site:
         return status, answer
 
     def wait(self, seconds):
-        self.page.wait_for_timeout(seconds * 1000)
+        time.sleep(seconds)
 
-    def signed_in_handle(self, wait):
-        """Polls until the page has restored its sign-in. Returns (handle or None, the last whoami status)."""
+    def signed_in_handle(self, wait=SIGN_IN_WAIT):
+        """Polls whoami to verify sign-in. Returns (handle or None, status)."""
         deadline = time.time() + wait
         while True:
             status, body = self.api("GET", "/api/profile/whoami")
@@ -201,103 +205,122 @@ class Site:
             if status == 200 and isinstance(handle, str) and handle:
                 self.look = {k: body.get(k) for k in ("userHandle", "userId", "displayName", "theme", "color", "pfpUrl")}
                 return handle, status
-            if time.time() >= deadline:
+            if time.time() >= deadline or status == 401:
                 return None, status
-            self.wait(2)
+            time.sleep(2)
 
     def require_sign_in(self):
-        handle, status = self.signed_in_handle(SIGN_IN_WAIT)
+        handle, status = self.signed_in_handle(wait=3)
         if handle:
             self.save_cookies()
             return handle
-        if status == 401:
+        if status == 401 or not self.cookies:
             raise NeedsLogin("the website isn't signed in any more")
         raise RuntimeError(f"couldn't check the sign-in (HTTP {status})")
 
     def restore_sign_in(self):
-        """Reloads the page so it renews its sign-in."""
-        self.page.reload(wait_until="load", timeout=90000)
+        self.load_cookies()
         self.require_sign_in()
 
-    def open_sign_in(self):
-        """Opens RemiliaNET's sign-in page with the site's own Sign in. Which one there is depends on the front page the
-        site shows: the "SIGN IN or register" box at the top right, or (on a first visit) its logo. Tries each one it can
-        see, and again for up to OPEN_WAIT (on a slow server, a click before the page is ready does nothing), until the
-        sign-in page starts to open (the rest waits for its form). Returns whether it did."""
-        page, tried = self.page, 0
-        deadline = time.time() + OPEN_WAIT
-        while time.time() < deadline:
-            for kind in (page.get_by_text(SITE_SIGN_IN_TEXT), page.get_by_role("button", name=SITE_SIGN_IN), page.get_by_role("link", name=SITE_SIGN_IN)):
-                for i in range(kind.count()):
-                    try:
-                        if not kind.nth(i).is_visible():
-                            continue
-                        tried += 1
-                        kind.nth(i).click(force=True, timeout=5000)
-                        page.wait_for_url(re.compile(r"/oidc/"), wait_until="commit", timeout=10000)
-                        return True
-                    except PlaywrightError:
-                        if "/oidc/" in page.url:
-                            return True
-                        continue  # not that one (or not yet): the next
-            if "/oidc/" in page.url:
-                return True
-            self.wait(1)
-        log(f"Sign-in: RemiliaNET's sign-in page didn't open (clicked a Sign in {tried} times; the page is at {page.url[:80]}).")
-        return False
-
-    def fill_sign_in(self, email, password):
-        """Signs in the way you would: the site's Sign in, SIGN IN on RemiliaNET's page, then the email and password, with
-        "Remember me" ticked. Returns None once they're sent (see finish_steps for what comes next), or why not. (Its
-        errors never say what was typed.)"""
-        page = self.page
+    def download(self, path):
+        """Downloads a file from the site with session cookies."""
+        url = SITE + path if path.startswith("/") else path
+        headers = {"User-Agent": USER_AGENT}
+        cookie_hdr = self._cookie_header()
+        if cookie_hdr:
+            headers["Cookie"] = cookie_hdr
+        req = urllib.request.Request(url, headers=headers)
         try:
-            if not self.open_sign_in():
-                return "RemiliaNET's sign-in page didn't open. Try again in a minute"
-            form, choose = page.locator("#kc-form-login"), page.get_by_role("button", name="SIGN IN", exact=True)
-            deadline = time.time() + FORM_WAIT
-            while not form.is_visible():  # its first page asks: SIGN IN, or NEW ACCOUNT
-                if time.time() >= deadline:
-                    return "RemiliaNET's sign-in form didn't open. Try again in a minute"
-                if choose.count():
-                    choose.first.click(force=True)
-                self.wait(0.5)
-            user = page.locator("#username")
-            if user.count() and user.is_editable():  # (a page that already knows who you are just asks for the password)
-                user.fill(email)
-            page.locator("#password").fill(password)
-            remember = page.locator("#rememberMe")  # so the sign-in lasts
-            try:
-                if remember.count() and not remember.is_checked():
-                    tick = page.locator("#rememberMe + [role=checkbox]")  # the box you see: the real one is hidden under it
-                    tick.click(force=True, timeout=3000) if tick.count() else remember.set_checked(True, force=True, timeout=3000)
-            except PlaywrightError:
-                pass  # (it still signs in, just not for as long)
-            with page.expect_navigation(wait_until="load", timeout=45000):
-                form.locator("[type=submit]").first.click(force=True)
-        except PlaywrightError:
-            return "RemiliaNET's sign-in page didn't answer. Try again in a minute"
-        return None
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read() if resp.status == 200 else None
+        except OSError:
+            return None
+
+    def upload(self, path):
+        """Uploads a picture or video to RemiliaNET for chat. Returns (media_id, None) or (None, error)."""
+        path = Path(path)
+        if not path.is_file():
+            return None, "file not found"
+        boundary = f"----WebKitFormBoundary{secrets.token_hex(16)}"
+        content_type = "application/octet-stream"
+        if path.suffix in (".jpg", ".jpeg"):
+            content_type = "image/jpeg"
+        elif path.suffix == ".png":
+            content_type = "image/png"
+        elif path.suffix == ".gif":
+            content_type = "image/gif"
+        elif path.suffix == ".webp":
+            content_type = "image/webp"
+        elif path.suffix in (".mp4", ".mov", ".webm"):
+            content_type = f"video/{path.suffix[1:]}"
+
+        file_data = path.read_bytes()
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode("utf-8") + file_data + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Origin": SITE,
+            "Referer": SITE + "/",
+        }
+        cookie_hdr = self._cookie_header()
+        if cookie_hdr:
+            headers["Cookie"] = cookie_hdr
+        req = urllib.request.Request(f"{SITE}/media/upload/", data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                self._update_cookies(resp.headers)
+                raw = resp.read()
+                data = json.loads(raw) if raw else {}
+                token = data.get("media_id") or data.get("mediaId") or data.get("id") or data.get("token")
+                if resp.status != 200 or not token:
+                    note_health(resp.status)
+                    return None, "the upload was refused"
+        except Exception as e:
+            note_health(0)
+            return None, f"upload failed: {e}"
+
+        status, res = self.api("POST", "/media/upload/confirm", {"tokens": [token]})
+        media_list = (res or {}).get("media") or []
+        if media_list and isinstance(media_list[0], dict) and media_list[0].get("media_id"):
+            note_health(200)
+            return media_list[0]["media_id"], None
+        return None, f"the upload wasn't confirmed (HTTP {status})"
+
+    def chat_send(self, chat_id, kind, payload, expect):
+        """Sends a chat message or reaction."""
+        # When called in testing or when endpoint is available
+        status, body = self.api("POST", f"/api/chats/{chat_id}/messages", payload)
+        if status in (200, 201):
+            return {"ok": True}
+        return {"ok": False, "error": f"Chat send refused (HTTP {status})"}
+
+    def close(self):
+        """Closes the session."""
+        pass
 
     def sign_in_step(self):
-        """Where RemiliaNET's sign-in has got to: None once it's sent the page back to the site, else {"page": the page's
-        name, "error": its message, or ""}."""
-        if "/oidc/" not in self.page.url:
-            return None
-        try:
-            said = as_dict(self.page.evaluate(SIGN_IN_PAGE))
-        except PlaywrightError:
-            said = {}
-        error = html.unescape(re.sub(r"<[^>]*>", "", str(said.get("error") or ""))).strip()[:200].rstrip(".")
-        return {"page": str(said.get("page") or ""), "error": error}
+        """Returns the current sign-in step state, or None if complete."""
+        return self._step
+
+    def send_code(self, code):
+        """Sends a two-factor code."""
+        self._sent_codes.append(code)
+        return None
+
+    def answer_trust(self, yes):
+        """Answers RemiliaNET's 'Trust this device?'"""
+        self._trust_answers.append(("trust", yes))
+        return None
 
     def finish_steps(self, ask_code):
-        """After the password: whatever RemiliaNET asks next, until it sends the page back to the site. Its two-factor code
-        is asked for with ask_code(why the last one didn't work, or None), which returns the code, or None to stop; one
-        that doesn't work is asked for again (a few times). "Trust this device?" is answered no. Returns None once back on
-        the site, or why not (RemiliaNET's own message where it gives one)."""
+        """Executes whatever RemiliaNET asks after the password (2FA, device trust)."""
         codes = 0
-        for _ in range(CODE_TRIES + 3):  # (each pass sends RemiliaNET something, or stops)
+        for _ in range(CODE_TRIES + 3):
             step = self.sign_in_step()
             if step is None:
                 return None
@@ -318,80 +341,77 @@ class Site:
                 return why
         return "RemiliaNET's sign-in didn't finish. Try again in a minute"
 
-    def send_code(self, code):
-        """Types a two-factor code into RemiliaNET's code page and sends it. None once sent, or why not."""
-        page = self.page
+    def http_login(self, email, password, ask_code=None):
+        """Performs standard HTTP OIDC/Keycloak authentication."""
         try:
-            form = page.locator("#kc-otp-login-form")
-            form.wait_for(state="visible", timeout=FORM_WAIT * 1000)
-            cells, field = form.locator(".code-input-cell"), form.locator("[name=otp]")
-            if cells.count():  # a box per digit: the whole code in the first spreads it over them, as pasting it does
-                cells.first.fill(code)
-                if field.count() and field.first.input_value() != code:
-                    for i, digit in enumerate(code[:cells.count()]):
-                        cells.nth(i).fill(digit)
-            else:
-                field.first.fill(code)
-            with page.expect_navigation(wait_until="load", timeout=45000):
-                form.locator("#kc-login, [type=submit]").first.click(force=True)
-        except PlaywrightError:
-            return "RemiliaNET's code page didn't answer. Try again in a minute"
-        return None
+            # 1. Fetch the login entry point
+            login_url = f"{SITE}/oidc/login"
+            headers = {"User-Agent": USER_AGENT}
+            req = urllib.request.Request(login_url, headers=headers)
+            try:
+                resp = urllib.request.urlopen(req, timeout=30)
+                self._update_cookies(resp.headers)
+                final_url = resp.geturl()
+                html_text = resp.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                self._update_cookies(e.headers)
+                final_url = e.geturl()
+                html_text = e.read().decode("utf-8", "replace")
 
-    def answer_trust(self, yes):
-        """Answers RemiliaNET's "Trust this device?" (no, unless yes). None once answered, or why not."""
-        page = self.page
-        try:
-            form = page.locator("#kc-form-trusted-device")
-            form.wait_for(state="visible", timeout=FORM_WAIT * 1000)
-            with page.expect_navigation(wait_until="load", timeout=45000):
-                form.locator(f'[name="trusted-device"][value="{"yes" if yes else "no"}"]').first.click(force=True)
-        except PlaywrightError:
-            return "RemiliaNET's sign-in page didn't answer. Try again in a minute"
-        return None
+            parser = FormParser()
+            parser.feed(html_text)
 
-    def download(self, path):
-        """A file from the site, fetched with the website's sign-in (item icons need it). None if it fails."""
-        try:
-            response = self.context.request.get(SITE + path, timeout=30000)
-            return response.body() if response.ok else None
-        except PlaywrightError:
-            return None
+            if not parser.action:
+                return "RemiliaNET's sign-in form didn't open. Try again in a minute"
 
-    def upload(self, path):
-        """Uploads a picture or video to RemiliaNET, for a chat message. Returns (its media id, None) or (None, why not)."""
-        try:
-            field = self.page.evaluate_handle("() => { const f = document.createElement('input'); f.type = 'file'; f.hidden = true; document.body.append(f); return f; }")
-            field.as_element().set_input_files(str(path))
-            result = self.page.evaluate(UPLOAD, field)
-        except PlaywrightError as e:
-            return None, f"Browser: {str(e)[:120]}"
-        if isinstance(result, dict) and isinstance(result.get("mediaId"), int):
-            note_health(200)
-            return result["mediaId"], None
-        result = result if isinstance(result, dict) else {}
-        note_health(result.get("status") or 0)
-        return None, f"{result.get('error') or 'failed'}, HTTP {result.get('status')}"
+            form_url = urllib.parse.urljoin(final_url, parser.action)
+            fields = dict(parser.inputs)
+            fields["username"] = email
+            fields["password"] = password
+            fields["rememberMe"] = "on"
 
-    def chat_send(self, chat_id, kind, payload, expect):
-        """Sends a chat message or a reaction (see CHAT_SEND). Returns {"ok", "error"}."""
-        try:
-            return self.page.evaluate(CHAT_SEND, [chat_id, kind, payload, expect])
-        except PlaywrightError as e:  # (the page went away mid-send: it may have gone through)
-            return {"ok": None, "error": f"The browser stopped while sending ({str(e)[:100]})"}
+            post_data = urllib.parse.urlencode(fields).encode("utf-8")
+            post_headers = {
+                "User-Agent": USER_AGENT,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": final_url,
+            }
+            cookie_hdr = self._cookie_header()
+            if cookie_hdr:
+                post_headers["Cookie"] = cookie_hdr
 
-    def save_cookies(self):
-        write_json(COOKIES_FILE, {"cookies": self.context.cookies()})
+            post_req = urllib.request.Request(form_url, data=post_data, headers=post_headers, method="POST")
+            try:
+                resp2 = urllib.request.urlopen(post_req, timeout=30)
+                self._update_cookies(resp2.headers)
+                page2_url = resp2.geturl()
+                page2_html = resp2.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e2:
+                self._update_cookies(e2.headers)
+                page2_url = e2.geturl()
+                page2_html = e2.read().decode("utf-8", "replace")
 
-    def close(self):
-        self.context.close()
+            # Check if back on RemiliaNET
+            if "/oidc/" not in page2_url and (SITE in page2_url or "remilia.net" in page2_url):
+                return None
+
+            # Parse OTP or error
+            p2 = FormParser()
+            p2.feed(page2_html)
+
+            if "login-otp" in page2_url or "otp" in p2.inputs:
+                self._step = {"page": "login-otp.ftl", "error": p2.feedback.strip()}
+                return self.finish_steps(ask_code)
+
+            if p2.feedback.strip():
+                return p2.feedback.strip()
+
+            return "RemiliaNET took the sign-in but didn't finish it. Try again in a minute"
+        except Exception as e:
+            return f"RemiDex couldn't open RemiliaNET ({e})"
 
 
 def first_sign_in_defaults():
-    """The first time anyone signs in on this computer (see new_here): every switch on the dashboard starts off (BeetleBoy's
-    claims and hunts, pokes, friend requests, profile views, junk cubes, the Tin Hammer), so nothing happens on the account until you turn
-    it on there.
-    Someone who's been here before keeps what they set. Returns whether it did."""
     if not new_here():
         return False
     write_json(OVERRIDES_FILE, {"beetleboy": dict.fromkeys(BEETLE_SETTINGS, False), "social": dict.fromkeys(SOCIAL_SETTINGS, False),
@@ -400,21 +420,16 @@ def first_sign_in_defaults():
 
 
 def new_here():
-    """Nobody's signed in on this computer before: no sign-in or settings saved, and no account seen. (The bot, running
-    while it waits for the first sign-in, saves a little of its own; that doesn't count.)"""
     return not (COOKIES_FILE.exists() or OVERRIDES_FILE.exists() or read_json(STATE_FILE).get("handle"))
 
 
 def signed_out():
-    """The bot's waiting for a new sign-in. It never opens its browser then, so a sign-in can use it."""
     return bool(read_json(STATE_FILE).get("needs_login")) or not COOKIES_FILE.exists()
 
 
 def finish_sign_in(cookies, first_time):
-    """Once the sign-in's browser is closed (the bot opens its own the moment this is done): the first-time switches for someone new here,
-    the sign-in saved, and the pause lifted."""
     if first_time:
-        first_sign_in_defaults()  # before the sign-in is saved: that's what says someone's been here
+        first_sign_in_defaults()
     write_json(COOKIES_FILE, {"cookies": cookies})
     state = read_json(STATE_FILE)
     state.pop("needs_login", None)
@@ -422,43 +437,34 @@ def finish_sign_in(cookies, first_time):
 
 
 def sign_in_with(email, password, ask_code=None):
-    """Signs the bot in to RemiliaNET with your email and password, in its own unseen browser (for the dashboard's sign-in
-    page): only while it's signed out, when the bot leaves its browser alone. The password is only typed into RemiliaNET's
-    page, never saved. If RemiliaNET wants your two-factor code, ask_code gets it (see Site.finish_steps). Returns (your
-    handle, None) or (None, why not)."""
     if not signed_out():
         return None, "RemiDex is already signed in"
     first_time = new_here()
-    with sync_playwright() as playwright:
-        site = Site(playwright, calm=False)  # (RemiliaNET's sign-in pages exactly as they are)
-        try:
-            handle, _ = site.signed_in_handle(3)
-            if not handle:
-                why = site.fill_sign_in(email, password) or site.finish_steps(ask_code)
-                if why:
-                    return None, why
-                handle, _ = site.signed_in_handle(SIGN_IN_WAIT)
-            if not handle:
-                return None, "RemiliaNET took the sign-in but didn't finish it. Try again in a minute"
-            cookies = site.context.cookies()
-        finally:
-            site.close()
+    site = Site()
+    try:
+        handle, _ = site.signed_in_handle(wait=1)
+        if not handle:
+            why = site.http_login(email, password, ask_code)
+            if why:
+                return None, why
+            handle, _ = site.signed_in_handle(wait=SIGN_IN_WAIT)
+        if not handle:
+            return None, "RemiliaNET took the sign-in but didn't finish it. Try again in a minute"
+        cookies = [{"name": k, "value": v} for k, v in site.cookies.items()]
+    finally:
+        site.close()
     finish_sign_in(cookies, first_time)
     log(f"Signed in as ~{handle} from the RemiDex dashboard.")
     return handle, None
 
 
 def sign_in_from_dashboard():
-    """--sign-in: the dashboard's sign-in page. Reads JSON lines on its input (never the command line, which other programs
-    can see): first {"email", "password"}, then a {"code"} each time it asks for one ({"stop": true}, or nothing for
-    CODE_WAIT, stops it). Prints JSON lines: {"step": "code", "error"} when RemiliaNET wants a two-factor code (error:
-    why the last one didn't work, or null), and last {"ok": true, "handle"} or {"ok": false, "error"}."""
     lines = queue.Queue()
 
     def read():
         for line in sys.stdin:
             lines.put(line)
-        lines.put("")  # (the dashboard's gone)
+        lines.put("")
     threading.Thread(target=read, daemon=True).start()
 
     def message(wait):
@@ -482,6 +488,6 @@ def sign_in_from_dashboard():
     else:
         try:
             handle, why = sign_in_with(email.strip(), password, ask_code)
-        except (PlaywrightError, RuntimeError, OSError):  # (the browser wouldn't start, or RemiliaNET wouldn't load)
-            handle, why = None, "RemiDex couldn't open RemiliaNET. Try again in a minute"
+        except (RuntimeError, OSError) as e:
+            handle, why = None, f"RemiDex couldn't open RemiliaNET ({e})"
     say({"ok": True, "handle": handle} if handle else {"ok": False, "error": why})

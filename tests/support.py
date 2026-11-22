@@ -16,12 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def offline():
-    """Playwright stubbed out (no browser), and nothing but this computer can be reached: a test is never online. (Also
+    """Nothing but this computer can be reached: a test is never online. (Also
     for the programs a test starts: see offline.py.)"""
-    sys.modules.setdefault("playwright", types.ModuleType("playwright"))
-    sync = types.ModuleType("playwright.sync_api")
-    sync.Error, sync.sync_playwright = Exception, None
-    sys.modules["playwright.sync_api"] = sync
     online = urllib.request.urlopen
 
     def only_here(request, *args, **kwargs):

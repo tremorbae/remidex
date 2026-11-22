@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """One person's RemiDex bot, as the website runs it (see hosted/web.py), in their folder (REMIDEX_HOME): it plays
 BeetleBoy (the daily cheese, the free beetle, the Cheeseman's junk and every hunt the cheese allows) and crafts toward
-what's picked on the dashboard in BeetleCraft, and pokes, friends and views people as picked there. Each round drives
-Playwright's own headless Chromium, signed in to remilia.net, for a few minutes, with the same requests the website
-makes; between rounds the browser is closed.
+what's picked on the dashboard in BeetleCraft, and pokes, friends and views people as picked there. Each round runs
+direct HTTP requests signed in to remilia.net, with the same requests the website
+makes.
 
     python3 poke_browser.py --round     one round now (the website's scheduler starts these)
     python3 poke_browser.py --sign-in   sign in (the dashboard's sign-in runs this: see browser.sign_in_from_dashboard)

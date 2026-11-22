@@ -143,6 +143,7 @@
   /* Notifications: what's happened since you last looked, from RemiliaNET and from the bot */
   .nav-item.notif { position: relative; min-width: 0; cursor: pointer; } .nav-item.notif:hover, .nav-item.notif.open { border-color: var(--accent); }
   .nav-item.theme { position: relative; min-width: 0; padding-right: 5px; cursor: pointer; } .nav-item.theme:hover, .nav-item.theme.open { border-color: var(--accent); }
+  .nav-item.admin { position: relative; min-width: 0; cursor: pointer; } .nav-item.admin:hover, .nav-item.admin.open { border-color: var(--accent); }
   .results.themes { left: auto; right: -1px; width: 190px; padding: 6px; cursor: default; color: var(--text); text-align: left; }
   .themes .topt { display: grid; grid-template-columns: 30px 1fr 14px; gap: 10px; align-items: center; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
   .themes .topt:hover, .themes .topt:focus-visible { background: var(--surface-2); outline: none; } .themes .topt.on { background: var(--surface-3); }
@@ -813,6 +814,9 @@
     <div class="nav-item theme" id="themeBtn" role="button" tabindex="0" title="Theme" aria-haspopup="true">
       <div class="ico"><span class="emo" aria-hidden="true">🎨</span></div>
       <div class="results themes" id="themes"></div></div>
+    <div class="nav-item admin" id="adminBtn" role="button" tabindex="0" title="Manage Invites" hidden>
+      <div class="ico"><span class="emo" aria-hidden="true">🔑</span></div>
+      <div><b>Admin</b><span id="adminSub">Invites</span></div></div>
   </nav>
   <div class="banner" id="banner"></div>
 
@@ -935,6 +939,24 @@
   <div class="dialog" id="hammerDialog"><div class="col">
     <div class="header"><div class="title"><span>锤子</span><span>Hammers</span></div><div class="chip close" id="hammerClose" style="cursor:pointer">✕ Close</div></div>
     <div class="content pluses" id="hammerBody"></div>
+  </div></div>
+  <div class="dialog" id="inviteDialog"><div class="col" style="width:min(520px,100%)">
+    <div class="header">
+      <div class="title"><span>邀请</span><span>Manage Invites</span></div>
+      <div class="chip close" id="inviteClose" style="cursor:pointer">✕ Close</div>
+    </div>
+    <div class="content pluses" style="padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span id="inviteCount" style="font-weight:bold;color:var(--text)">– invited handles</span>
+        <span class="chip" style="font-size:11px">Neon DB</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" id="inviteInput" class="pd-in" placeholder="RemiliaNET handle (e.g. ~handle or handle)" style="flex:1" maxlength="40" spellcheck="false" autocomplete="off">
+        <button type="button" class="makebtn" id="inviteAddBtn" style="flex:none;margin:0">Invite</button>
+      </div>
+      <div id="inviteMsg" class="pd-msg" style="margin:0 0 10px;min-height:16px"></div>
+      <div id="inviteList" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border-light);border-radius:8px;padding:8px;background:var(--surface-1)"></div>
+    </div>
   </div></div>
   <div class="toast" id="toast"><div class="col">
     <div class="header"><div class="title"><span>升级</span><span>Level up</span></div><div class="chip close" id="toastClose">✕</div></div>
@@ -3167,6 +3189,123 @@ looking(); setInterval(looking, 8000);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") touched = Date.now(); looking(); });
 loadTrophies(); setInterval(loadTrophies, 30000);  // your trophy case, as it is on RemiliaNET
 loadMe(); setInterval(loadMe, 60000);  // your card's picture and name, as they are on RemiliaNET
+
+// Admin invite management
+let adminData = null;
+async function checkAdmin() {
+  try {
+    const r = await fetch("/api/invites", {cache: "no-store"});
+    if (r.ok) {
+      adminData = await r.json();
+      $("adminBtn").hidden = false;
+      renderInvites();
+    } else {
+      $("adminBtn").hidden = true;
+    }
+  } catch {}
+}
+
+function renderInvites() {
+  if (!adminData) return;
+  const list = $("inviteList");
+  list.innerHTML = "";
+  const count = (adminData.invites || []).length;
+  $("inviteCount").textContent = `${count} invited handle${count === 1 ? "" : "s"}`;
+  $("adminSub").textContent = `${count} invited`;
+
+  if (adminData.invites.includes("*")) {
+    const star = document.createElement("div");
+    star.style = "padding:6px 10px;background:var(--surface-3);border-radius:6px;font-size:12px;margin-bottom:4px;color:var(--accent)";
+    star.textContent = "★ Open to anyone (*) is currently active.";
+    list.appendChild(star);
+  }
+
+  for (const handle of adminData.invites || []) {
+    if (handle === "*") continue;
+    const row = document.createElement("div");
+    row.style = "display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface-2);border-radius:6px;font-size:13px";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.style = "font-family:monospace;font-weight:bold";
+    nameSpan.textContent = `~${handle}`;
+    if (adminData.admins && adminData.admins.includes(handle)) {
+      const adm = document.createElement("span");
+      adm.style = "margin-left:6px;font-size:10px;color:var(--accent);font-weight:normal";
+      adm.textContent = "(admin)";
+      nameSpan.appendChild(adm);
+    }
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "wbtn";
+    delBtn.style = "color:#c03535;font-size:12px;padding:2px 8px;cursor:pointer";
+    delBtn.textContent = "✕";
+    delBtn.title = `Remove invite for ~${handle}`;
+    delBtn.onclick = async () => {
+      delBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/invites/${encodeURIComponent(handle)}`, {method: "DELETE"});
+        if (res.ok) {
+          adminData.invites = adminData.invites.filter(h => h !== handle);
+          renderInvites();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          $("inviteMsg").textContent = err.error || "Failed to remove";
+          $("inviteMsg").className = "pd-msg bad";
+        }
+      } catch (e) {
+        $("inviteMsg").textContent = e.message;
+        $("inviteMsg").className = "pd-msg bad";
+      }
+    };
+
+    row.appendChild(nameSpan);
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  }
+}
+
+async function addInvite() {
+  const inp = $("inviteInput");
+  const handle = inp.value.trim().replace(/^~/, "").toLowerCase();
+  if (!handle) return;
+  const btn = $("inviteAddBtn");
+  btn.disabled = true;
+  $("inviteMsg").textContent = "";
+  try {
+    const res = await fetch("/api/invites", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({handle})
+    });
+    const data = await res.json();
+    if (res.ok) {
+      inp.value = "";
+      if (!adminData.invites.includes(handle)) {
+        adminData.invites.push(handle);
+        adminData.invites.sort();
+      }
+      renderInvites();
+      $("inviteMsg").textContent = `Invited ~${handle}`;
+      $("inviteMsg").className = "pd-msg ok";
+    } else {
+      $("inviteMsg").textContent = data.error || "Failed to invite";
+      $("inviteMsg").className = "pd-msg bad";
+    }
+  } catch (err) {
+    $("inviteMsg").textContent = err.message;
+    $("inviteMsg").className = "pd-msg bad";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("adminBtn").onclick = () => { $("inviteDialog").classList.add("open"); checkAdmin(); };
+$("inviteClose").onclick = () => $("inviteDialog").classList.remove("open");
+$("inviteAddBtn").onclick = addInvite;
+$("inviteInput").onkeydown = e => { if (e.key === "Enter") addInvite(); };
+
+checkAdmin(); setInterval(checkAdmin, 30000);
 </script>
 </body>
 </html>

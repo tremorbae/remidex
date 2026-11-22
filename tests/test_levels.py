@@ -6,7 +6,7 @@ from pathlib import Path
 import support
 pb = support.load()
 ok = support.Checks()
-import dashboard  # noqa: E402  (after the bot is loaded, so Playwright is stubbed)
+import dashboard  # noqa: E402
 tmp = Path(tempfile.mkdtemp())
 file = tmp / "levels.json"
 support.patch(LEVELS_FILE=file)

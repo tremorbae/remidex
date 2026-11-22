@@ -36,14 +36,6 @@ class FakeSite:
         events.append(("chrome closed", clock["t"]))
 
 
-class Ctx:
-    def __enter__(self):
-        return None
-
-    def __exit__(self, *a):
-        return False
-
-
 def stub(name, push, every):
     def f(site, st, *rest, **kw):
         events.append((name, clock["t"]))
@@ -52,7 +44,7 @@ def stub(name, push, every):
     return f
 
 
-support.patch(**paths, time=fake_time, log=lambda m: None, Site=FakeSite, sync_playwright=lambda: Ctx(),
+support.patch(**paths, time=fake_time, log=lambda m: None, Site=FakeSite,
               poke_next=lambda site, st, settings: (events.append(("poke", clock["t"])), clock["t"])[1],
               play_beetleboy=stub("claims", "beetle_check_at", 900), beetlecraft=stub("craft", "craft_check_at", 900),
               cache_profile_views=stub("news", "views_check_at", 300), accept_requests=stub("friends", "accept_check_at", 300),

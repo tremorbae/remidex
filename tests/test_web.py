@@ -82,7 +82,6 @@ class FakeDesk:
             return 200, {"signed_in": False, "running": True, "step": None, "error": None, "attempt": 7, "handle": None, "hue": 204}
         pb.write_json(home / "cookies.json", {"cookies": [{"name": "session", "value": self.handle}]})
         pb.write_json(home / "overrides.json", {"social": {"pokes": False}})  # (a first sign-in's switches: all off)
-        (home / "browser-profile").mkdir(exist_ok=True)
         return 200, {"signed_in": True, "running": False, "step": None, "error": None, "attempt": 7, "handle": self.handle, "hue": 204}
 
 
