@@ -166,8 +166,6 @@ const sendError = err => err.message === "Failed to fetch" ? "RemiDex isn't answ
   : err.message === "HTTP 503" ? "RemiDex is busy signing other people in. Try again in a minute"
   : `RemiDex didn't take it (${err.message})`;
 
-let inviteCodeVal = "";
-
 $("form").onsubmit = async e => {
   e.preventDefault();
   const email = $("email").value.trim(), password = $("password").value;
@@ -236,6 +234,7 @@ $("restart").onclick = async () => {
   try { await send("/api/sign-in/stop", {}); } catch {}
   check();
 };
+if (inviteCodeVal) $("inviteCode").value = inviteCodeVal;
 check();
 </script>
 </body>
