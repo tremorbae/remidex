@@ -3,6 +3,7 @@ and signs in via direct HTTP."""
 
 import base64
 import hashlib
+import html
 import json
 import queue
 import re
@@ -436,6 +437,44 @@ class Site:
         except Exception as e:
             return f"RemiDex couldn't send code to RemiliaNET ({e})"
 
+        # Follow redirects to reach the authorization callback or next page
+        redirect_hops = 0
+        while (location or status_code in (301, 302, 303, 307, 308)) and redirect_hops < 5:
+            dest_url = urllib.parse.urljoin(page_url, location) if location else page_url
+            parsed = urllib.parse.urlparse(dest_url)
+            auth_code = urllib.parse.parse_qs(parsed.query).get("code", [None])[0]
+            if auth_code and verifier:
+                err = self._exchange_token(auth_code, verifier)
+                if err:
+                    return err
+                self._step = None
+                self._otp_context = None
+                return None
+            redirect_hops += 1
+            try:
+                get_headers = {
+                    "User-Agent": USER_AGENT,
+                    "Referer": page_url,
+                }
+                cookie_hdr = self._cookie_header()
+                if cookie_hdr:
+                    get_headers["Cookie"] = cookie_hdr
+                get_req = urllib.request.Request(dest_url, headers=get_headers, method="GET")
+                resp = opener.open(get_req, timeout=30)
+                self._update_cookies(resp.headers)
+                status_code = resp.status
+                location = resp.headers.get("Location")
+                page_html = resp.read().decode("utf-8", "replace")
+                page_url = resp.geturl()
+            except urllib.error.HTTPError as e:
+                self._update_cookies(e.headers)
+                status_code = e.code
+                location = e.headers.get("Location")
+                page_html = e.read().decode("utf-8", "replace")
+                page_url = e.geturl()
+            except Exception as e:
+                return f"RemiDex couldn't send code to RemiliaNET ({e})"
+
         if location or status_code in (301, 302, 303, 307, 308):
             parsed = urllib.parse.urlparse(location or page_url)
             auth_code = urllib.parse.parse_qs(parsed.query).get("code", [None])[0]
@@ -447,11 +486,18 @@ class Site:
                 self._otp_context = None
                 return None
 
+        # Check if Keycloak moved to trusted device
+        page_match = re.search(r'["\']pageId["\']\s*:\s*["\']([^"\']+)["\']', page_html)
+        page_id = page_match.group(1) if page_match else ""
+        if page_id.startswith("trusted-device") or "trusted-device" in page_html:
+            self._step = {"page": "trusted-device.ftl", "error": None}
+            return None
+
         summary_match = re.search(r'["\']summary["\']\s*:\s*["\']([^"\']+)["\']', page_html)
         err_msg = summary_match.group(1) if summary_match else "Invalid authenticator code"
         next_action_match = re.search(r'["\']loginAction["\']\s*:\s*["\']([^"\']+)["\']', page_html)
         if next_action_match:
-            self._otp_context["action"] = next_action_match.group(1).replace(r"\/", "/")
+            self._otp_context["action"] = html.unescape(next_action_match.group(1).replace(r"\/", "/"))
         if self._step:
             self._step["error"] = err_msg
         return None
@@ -562,7 +608,39 @@ class Site:
                 status2 = e2.code
                 loc2 = e2.headers.get("Location")
 
-            # Check if Keycloak redirected us to the authorization callback
+            # Follow redirects to reach the authorization callback or next page (e.g. OTP prompt)
+            hops2 = 0
+            while (loc2 or status2 in (301, 302, 303, 307, 308)) and hops2 < 5:
+                dest_url2 = urllib.parse.urljoin(page2_url, loc2) if loc2 else page2_url
+                parsed2 = urllib.parse.urlparse(dest_url2)
+                auth_code = urllib.parse.parse_qs(parsed2.query).get("code", [None])[0]
+                if auth_code:
+                    err = self._exchange_token(auth_code, verifier)
+                    if err:
+                        return err
+                    return None
+                hops2 += 1
+                try:
+                    get_headers2 = {"User-Agent": USER_AGENT, "Referer": page2_url}
+                    cookie_hdr = self._cookie_header()
+                    if cookie_hdr:
+                        get_headers2["Cookie"] = cookie_hdr
+                    get_req2 = urllib.request.Request(dest_url2, headers=get_headers2, method="GET")
+                    resp2 = opener.open(get_req2, timeout=30)
+                    self._update_cookies(resp2.headers)
+                    status2 = resp2.status
+                    loc2 = resp2.headers.get("Location")
+                    page2_html = resp2.read().decode("utf-8", "replace")
+                    page2_url = resp2.geturl()
+                except urllib.error.HTTPError as e2:
+                    self._update_cookies(e2.headers)
+                    status2 = e2.code
+                    loc2 = e2.headers.get("Location")
+                    page2_html = e2.read().decode("utf-8", "replace")
+                    page2_url = e2.geturl()
+                except Exception:
+                    break
+
             if loc2 or status2 in (301, 302, 303, 307, 308):
                 parsed = urllib.parse.urlparse(loc2 or page2_url)
                 auth_code = urllib.parse.parse_qs(parsed.query).get("code", [None])[0]
@@ -588,7 +666,7 @@ class Site:
 
             if page_id.startswith("login-otp") or "login-otp" in page2_html:
                 otp_action_match = re.search(r'["\']loginAction["\']\s*:\s*["\']([^"\']+)["\']', page2_html)
-                otp_action = otp_action_match.group(1).replace(r"\/", "/") if otp_action_match else None
+                otp_action = html.unescape(otp_action_match.group(1).replace(r"\/", "/")) if otp_action_match else None
                 self._otp_context = {"action": otp_action, "verifier": verifier, "referer": page2_url}
                 self._step = {"page": "login-otp.ftl", "error": err_msg}
                 return self.finish_steps(ask_code)
