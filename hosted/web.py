@@ -92,6 +92,7 @@ def db_connect():
 
 def ensure_invites_table():
     """Create the invites table in Neon if it isn't there yet."""
+    global _db
     db = db_connect()
     if not db:
         return
@@ -103,29 +104,39 @@ def ensure_invites_table():
             )""")
         db.commit()
     except Exception as e:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        _db = None
         log(f"Website: couldn't create invites table ({type(e).__name__}: {e}).")
 
 
 def load_invites_from_db():
-    """All invited handles from Neon."""
+    """All invited handles from Neon (or None if Neon couldn't be reached)."""
+    global _db
     db = db_connect()
     if not db:
-        return set()
+        return None
     try:
         with db.cursor() as cur:
             cur.execute("SELECT handle FROM invites")
             return {row[0].strip().lstrip("~").lower() for row in cur.fetchall()}
     except Exception as e:
         log(f"Website: couldn't read invites from Neon ({type(e).__name__}: {e}).")
-        return set()
+        _db = None
+        return None
 
 
 def refresh_invites():
     """Re-sync the invite cache from Neon (called on startup and periodically)."""
+    db_inv = load_invites_from_db()
     with _invites_lock:
-        INVITES.clear()
-        INVITES.update(env_invites() | load_invites_from_db())
+        if db_inv is not None:
+            INVITES.clear()
+            INVITES.update(env_invites() | db_inv)
+        else:
+            INVITES.update(env_invites())
     log(f"Website: invite list refreshed ({len(INVITES)} invited).")
 
 
@@ -137,6 +148,7 @@ def invited(handle):
 
 def add_invite(handle):
     """Add a handle to the invite list (cache + Neon if configured). Returns whether it worked."""
+    global _db
     name = str(handle or "").strip().lstrip("~").lower()
     with _invites_lock:
         INVITES.add(name)
@@ -151,13 +163,18 @@ def add_invite(handle):
         log(f"Website: invited ~{name}.")
         return True
     except Exception as e:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        _db = None
         log(f"Website: couldn't save ~{name} to Neon ({type(e).__name__}: {e}); kept in cache.")
         return True
 
 
 def remove_invite(handle):
     """Remove a handle from the invite list (cache + Neon if configured). Returns whether it worked."""
+    global _db
     name = str(handle or "").strip().lstrip("~").lower()
     with _invites_lock:
         INVITES.discard(name)
@@ -172,7 +189,11 @@ def remove_invite(handle):
         log(f"Website: uninvited ~{name}.")
         return True
     except Exception as e:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        _db = None
         log(f"Website: couldn't remove ~{name} from Neon ({type(e).__name__}: {e}); kept out of cache.")
         return True
 
