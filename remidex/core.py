@@ -97,14 +97,15 @@ def editing(path):
         yield
 
 
-LOOKING_FILE = APP_DIR / "dashboard_open.json"  # the dashboard writes this while it's open and visible: someone's looking at it
-LOOKING_FOR = 90  # ... and it counts as open this long after its last ask
+LOOKING_FILE = APP_DIR / "dashboard_open.json"  # the dashboard writes this while it's open: someone has the app open
+LOOKING_FOR = 30  # ... and it counts as open this long after its last heartbeat (or 0 when left)
 
 
 def someone_looking(path=None):
-    """Whether the dashboard is open and visible (it says so every few seconds while it is). path: another bot's
+    """Whether the dashboard is open in a browser (it sends a heartbeat every few seconds while it is). path: another bot's
     LOOKING_FILE (on the website, its scheduler asks about everyone's)."""
-    return time.time() - (read_json(path or LOOKING_FILE).get("at") or 0) < LOOKING_FOR
+    at = read_json(path or LOOKING_FILE).get("at")
+    return bool(at and (time.time() - at < LOOKING_FOR))
 
 
 def today(state):

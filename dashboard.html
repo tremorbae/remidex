@@ -3176,17 +3176,15 @@ function listen() {
 }
 if ("EventSource" in window) listen();
 setInterval(() => { if (!live || Date.now() - lastRefresh > 30000) { lastRefresh = Date.now(); refresh(); } }, 5000);
-// While you're using this page (it's visible, and you've touched it in the last 5 minutes), tell the bot, so it keeps
-// its round going and your game up to date (what you do on RemiliaNET shows here within seconds). A hidden tab, or one
-// left open and untouched, goes quiet, and the bot goes back to short rounds with rests in between.
-const IDLE_AFTER = 5 * 60 * 1000;
-let touched = Date.now();
-for (const kind of ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"]) addEventListener(kind, () => { touched = Date.now(); }, {passive: true});
+// While this page is open in the browser (foreground, background or minimized), send a heartbeat
+// so the bot stays active and runs as much as you choose. When the tab or browser is closed completely,
+// it notifies the server immediately and stops all rounds.
 const looking = () => {
-  if (document.visibilityState === "visible" && Date.now() - touched < IDLE_AFTER) fetch("/api/looking", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}).catch(() => {});
+  fetch("/api/looking", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}).catch(() => {});
 };
 looking(); setInterval(looking, 8000);
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") touched = Date.now(); looking(); });
+window.addEventListener("pagehide", () => { navigator.sendBeacon("/api/leaving", "{}"); });
+window.addEventListener("beforeunload", () => { navigator.sendBeacon("/api/leaving", "{}"); });
 loadTrophies(); setInterval(loadTrophies, 30000);  // your trophy case, as it is on RemiliaNET
 loadMe(); setInterval(loadMe, 60000);  // your card's picture and name, as they are on RemiliaNET
 

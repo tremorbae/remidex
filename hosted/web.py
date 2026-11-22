@@ -236,8 +236,8 @@ def rounds_most():
     try:
         memory = int(Path("/sys/fs/cgroup/memory.max").read_text())
     except (OSError, ValueError):
-        return 2
-    return max(1, min(12, (memory - 300 * 2 ** 20) // (50 * 2 ** 20)))
+        return 10
+    return max(1, min(50, (memory - 100 * 2 ** 20) // (25 * 2 ** 20)))
 
 
 def stop(proc):
@@ -415,6 +415,9 @@ class Scheduler(threading.Thread):
                 if proc.poll() is not None:
                     del self.rounds[home]
                 elif time.time() - started > ROUND_LIMIT:
+                    look_file = home / "dashboard_open.json"
+                    if look_file.exists() and loop.someone_looking(look_file):
+                        continue  # user still has the app open: let the round continue
                     log(f"Scheduler: stopped a round going on too long (~{home.name}).")
                     stop(proc)
                     del self.rounds[home]
@@ -425,6 +428,9 @@ class Scheduler(threading.Thread):
                     break
                 if home in self.rounds or home in self.held or not invited(home.name):  # (not invited: no rounds)
                     continue
+                look_file = home / "dashboard_open.json"
+                if look_file.exists() and not loop.someone_looking(look_file):
+                    continue  # app closed in browser: no rounds
                 try:
                     wanted = loop.round_wanted(home)
                 except Exception as e:  # (one person's odd files mustn't stop everyone's bots)

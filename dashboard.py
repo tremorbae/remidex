@@ -1422,9 +1422,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.wfile.write(b"retry: 3000\n\n")
             self.wfile.flush()
-            last, quiet = live_version(), 0.0
+            bot.write_json(bot.LOOKING_FILE, {"at": time.time()})
+            last, quiet, last_look = live_version(), 0.0, time.time()
             while True:
                 time.sleep(STREAM_LOOK)
+                now = time.time()
+                if now - last_look >= 10.0:
+                    last_look = now
+                    bot.write_json(bot.LOOKING_FILE, {"at": now})
                 version = live_version()
                 quiet += STREAM_LOOK
                 if version != last:
@@ -1437,6 +1442,7 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 self.wfile.flush()
         except (OSError, ValueError):
+            bot.write_json(bot.LOOKING_FILE, {"at": 0})
             return  # the page closed or went away
 
     def do_POST(self):
@@ -1482,6 +1488,11 @@ class Handler(BaseHTTPRequestHandler):
         request = request if isinstance(request, dict) else {}
         if self.path == "/api/looking":  # nothing to save in overrides: just that someone's looking right now
             bot.write_json(bot.LOOKING_FILE, {"at": time.time()})
+            self.send_response(204)
+            self.end_with_safe_headers()
+            return
+        if self.path == "/api/leaving":  # browser tab or window was closed completely
+            bot.write_json(bot.LOOKING_FILE, {"at": 0})
             self.send_response(204)
             self.end_with_safe_headers()
             return
