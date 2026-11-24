@@ -50,6 +50,7 @@ PORT = int(os.environ.get("PORT") or 10000)
 HOSTS = {h.strip().lower() for h in (os.environ.get("REMIDEX_HOSTS") or "remidex.xyz,www.remidex.xyz,remidex.onrender.com").split(",") if h.strip()}
 SIGNING_IN_DIR = DATA / "signing-in"  # each sign-in's own folder, until it has worked
 SESSIONS_FILE = DATA / "sessions.json"  # RemiDex's sign-ins: {hash of the cookie's token: {"handle", "at", "seen"}}
+INVITES_FILE = DATA / "invites.json"  # RemiDex's invited handles and codes: {handle: {"code": str or None}}
 SCHEDULER_FILE = dashboard.SCHEDULER_FILE  # the scheduler says it's there (each dashboard's green light)
 COOKIE, PENDING = "remidex", "remidex_signin"  # RemiDex's sign-in; a sign-in under way (before it has worked)
 SESSION_FOR = 30 * 86400  # unused this long, a RemiDex sign-in ends
@@ -127,6 +128,42 @@ def ensure_invites_table():
         log(f"Website: couldn't create/update invites table ({type(e).__name__}: {e}).")
 
 
+def load_invites_from_disk():
+    """All invited handles and details from DATA / invites.json (if present)."""
+    if not INVITES_FILE.exists():
+        return {}
+    try:
+        data = read_json(INVITES_FILE)
+        if isinstance(data, dict):
+            details = {}
+            for k, v in data.items():
+                h = str(k).strip().lstrip("~").lower()
+                if not h:
+                    continue
+                code = None
+                if isinstance(v, dict):
+                    c = v.get("code")
+                    code = str(c).strip().upper() if c else None
+                elif isinstance(v, str):
+                    code = v.strip().upper() or None
+                details[h] = {"code": code}
+            return details
+    except Exception as e:
+        log(f"Website: couldn't read invites from disk ({type(e).__name__}: {e}).")
+    return {}
+
+
+def save_invites_to_disk():
+    """Persist current in-memory invites to DATA / invites.json."""
+    try:
+        DATA.mkdir(parents=True, exist_ok=True)
+        with _invites_lock:
+            data = {h: {"code": (INVITE_DETAILS.get(h) or {}).get("code")} for h in INVITES}
+        write_json(INVITES_FILE, data)
+    except Exception as e:
+        log(f"Website: couldn't save invites to disk ({type(e).__name__}: {e}).")
+
+
 def load_invites_from_db():
     """All invited handles and details from Neon (or None if Neon couldn't be reached)."""
     global _db
@@ -149,22 +186,33 @@ def load_invites_from_db():
 
 
 def refresh_invites():
-    """Re-sync the invite cache from Neon (called on startup and periodically)."""
+    """Re-sync the invite cache from Neon, disk, and env (called on startup and periodically)."""
     db_inv = load_invites_from_db()
+    disk_inv = load_invites_from_disk()
     new_admin_codes = {}
     with _invites_lock:
+        env_set = env_invites()
+        combined = dict(disk_inv)
+        if db_inv is not None:
+            for h, info in db_inv.items():
+                if h in combined and not (info or {}).get("code") and (combined[h] or {}).get("code"):
+                    pass
+                else:
+                    combined[h] = info
+        else:
+            for h in INVITES:
+                if h not in combined:
+                    combined[h] = INVITE_DETAILS.get(h, {"code": None})
+
         INVITES.clear()
         INVITE_DETAILS.clear()
         INVITE_CODES.clear()
-        env_set = env_invites()
-        if db_inv is not None:
-            INVITES.update(env_set | set(db_inv.keys()))
-            INVITE_DETAILS.update(db_inv)
-            for h, info in db_inv.items():
-                if info.get("code"):
-                    INVITE_CODES[info["code"].upper()] = h
-        else:
-            INVITES.update(env_set)
+
+        INVITES.update(env_set | set(combined.keys()))
+        INVITE_DETAILS.update(combined)
+        for h, info in combined.items():
+            if info and info.get("code"):
+                INVITE_CODES[info["code"].upper()] = h
 
         for h in env_set:
             INVITE_DETAILS.setdefault(h, {"code": None})
@@ -186,6 +234,8 @@ def refresh_invites():
                 INVITE_CODES[code.upper()] = adm
                 new_admin_codes[adm] = code
                 log(f"Website: [ADMIN KEY] Permanent invite code for ~{adm}: {code} (set REMIDEX_ADMIN_CODE in Render to customize).")
+
+    save_invites_to_disk()
 
     if new_admin_codes:
         db = db_connect()
@@ -229,6 +279,7 @@ def generate_invite_code(handle):
             del INVITE_CODES[old_code.upper()]
         INVITE_DETAILS[name] = {"code": code}
         INVITE_CODES[code.upper()] = name
+    save_invites_to_disk()
     db = db_connect()
     if db:
         try:
@@ -250,15 +301,16 @@ def generate_invite_code(handle):
 
 
 def add_invite(handle):
-    """Add a handle to the invite list (cache + Neon if configured). Returns whether it worked."""
+    """Add a handle to the invite list (cache + disk + Neon if configured). Returns whether it worked."""
     global _db
     name = str(handle or "").strip().lstrip("~").lower()
     with _invites_lock:
         INVITES.add(name)
         INVITE_DETAILS.setdefault(name, {"code": None})
+    save_invites_to_disk()
     db = db_connect()
     if not db:
-        log(f"Website: invited ~{name} (cache only, no Neon).")
+        log(f"Website: invited ~{name} (cache + disk, no Neon).")
         return True
     try:
         with db.cursor() as cur:
@@ -288,6 +340,7 @@ def remove_invite(handle):
         info = INVITE_DETAILS.pop(name, None)
         if info and info.get("code"):
             INVITE_CODES.pop(info["code"].upper(), None)
+    save_invites_to_disk()
     sessions.drop(handle=name)
     home = USERS_DIR / name
     if home.exists():
@@ -295,7 +348,7 @@ def remove_invite(handle):
         desks.stop(home)
     db = db_connect()
     if not db:
-        log(f"Website: uninvited ~{name} (cache only, no Neon).")
+        log(f"Website: uninvited ~{name} (cache + disk, no Neon).")
         return True
     try:
         with db.cursor() as cur:
@@ -584,8 +637,10 @@ class Scheduler(threading.Thread):
 class SignIn:
     """A sign-in under way: its own folder, and the address it came from."""
 
-    def __init__(self, address):
+    def __init__(self, address, target_handle="", code=""):
         self.home, self.address, self.at = SIGNING_IN_DIR / secrets.token_hex(12), address, time.time()
+        self.target_handle = target_handle
+        self.code = code
         self.home.mkdir(parents=True)
 
 
@@ -806,13 +861,43 @@ class Handler(BaseHTTPRequestHandler):
                     mine = signins.pop(pending, None) is run  # (two asking at once: only one brings it in)
                 if not mine:
                     return self.answer_json({"signed_in": signed_in(home), "running": True, "step": None, "error": None, "attempt": said.get("attempt"), "hue": 204})
-                if not invited(said["handle"]):  # (someone not on the list got this far: their sign-in isn't kept)
-                    desks.stop(run.home)
-                    shutil.rmtree(run.home, ignore_errors=True)
-                    log(f"Website: turned away ~{said['handle']} (not invited); their sign-in was deleted.")
-                    return self.answer_json({**said, "signed_in": False, "running": False, "error": "RemiDex is invite-only right now, and that account isn't on the list"},
-                                            cookies=[self.cookie(PENDING, "", 0)])
-                welcomed = welcome(run, said["handle"])
+                actual_handle = str(said["handle"]).strip().lstrip("~").lower()
+                if not invited(actual_handle):
+                    is_valid_via_code = False
+                    if getattr(run, "code", None):
+                        with _invites_lock:
+                            code_target = INVITE_CODES.get(run.code)
+                        if code_target and invited(code_target):
+                            is_valid_via_code = True
+
+                    if is_valid_via_code:
+                        log(f"Website: linking authenticated handle ~{actual_handle} to invite code {run.code} (original target: ~{getattr(run, 'target_handle', '')}).")
+                        add_invite(actual_handle)
+                        with _invites_lock:
+                            INVITE_DETAILS[actual_handle] = {"code": run.code}
+                            INVITE_CODES[run.code] = actual_handle
+                        save_invites_to_disk()
+                        db = db_connect()
+                        if db:
+                            try:
+                                with db.cursor() as cur:
+                                    cur.execute("""INSERT INTO invites (handle, code)
+                                                   VALUES (%s, %s)
+                                                   ON CONFLICT (handle) DO UPDATE SET code = EXCLUDED.code""",
+                                                (actual_handle, run.code))
+                                db.commit()
+                            except Exception:
+                                try:
+                                    db.rollback()
+                                except Exception:
+                                    pass
+                    else:
+                        desks.stop(run.home)
+                        shutil.rmtree(run.home, ignore_errors=True)
+                        log(f"Website: turned away ~{said['handle']} (not invited); their sign-in was deleted.")
+                        return self.answer_json({**said, "signed_in": False, "running": False, "error": "RemiDex is invite-only right now, and that account isn't on the list"},
+                                                cookies=[self.cookie(PENDING, "", 0)])
+                welcomed = welcome(run, actual_handle)
                 if welcomed is None:
                     return self.answer_json({**said, "signed_in": False, "running": False, "error": "RemiliaNET's handle for you isn't one RemiDex can use"})
                 token = sessions.new(welcomed.name)
@@ -832,16 +917,21 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 asked = {}
             target_handle = str(asked.get("handle") or "").strip().lstrip("~").lower() if isinstance(asked, dict) else ""
-            if not target_handle and isinstance(asked, dict) and asked.get("code"):
+            provided_code = str(asked.get("code") or "").strip().upper() if isinstance(asked, dict) else ""
+            if provided_code:
                 with _invites_lock:
-                    target_handle = INVITE_CODES.get(str(asked.get("code")).strip().upper(), "")
-            if not (target_handle and invited(target_handle)):
+                    code_target = INVITE_CODES.get(provided_code, "")
+                if code_target:
+                    target_handle = code_target
+            elif not target_handle and provided_code:
+                with _invites_lock:
+                    target_handle = INVITE_CODES.get(provided_code, "")
+            if "*" not in INVITES and not (target_handle and invited(target_handle)):
                 return self.answer(403, b"RemiDex is invite-only right now")
             with _invites_lock:
                 info = INVITE_DETAILS.get(target_handle, {})
                 stored_code = (info.get("code") or "").strip().upper()
             if stored_code:
-                provided_code = str(asked.get("code") or "").strip().upper()
                 if provided_code != stored_code:
                     return self.answer_json({"error": "Valid invite code required to sign in"}, status=403)
             address = self.address()
@@ -852,7 +942,7 @@ class Handler(BaseHTTPRequestHandler):
                 if sum(time.time() - r.at < SIGN_IN_TIME for r in signins.values()) >= SIGN_INS_MOST:
                     return self.answer(503, b"RemiDex is busy signing other people in. Try again in a minute")
                 started_from[address] = recent + [time.time()]
-                run, pending = SignIn(address), secrets.token_urlsafe(24)
+                run, pending = SignIn(address, target_handle=target_handle, code=provided_code), secrets.token_urlsafe(24)
                 signins[pending] = run
         status, said = self.ask_desk(run.home, "POST", path, body)
         if not status:
@@ -1143,8 +1233,8 @@ def main():
     sessions = Sessions(SESSIONS_FILE)
     scheduler = Scheduler(rounds_most())
     scheduler.start()
-    refresh_invites()  # load invites from Neon + env var
     ensure_invites_table()  # make sure the Neon invites table exists
+    refresh_invites()  # load invites from Neon + disk + env var
     threading.Thread(target=social.watch_feed, daemon=True).start()
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=_invite_refresh_loop, daemon=True).start()  # keep Neon invites fresh

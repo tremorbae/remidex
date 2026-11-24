@@ -275,6 +275,27 @@ st, _, body = ask("/api/invited", {"code": new_code})
 ok(st == 200 and json.loads(body).get("invited") is True and json.loads(body).get("handle") == "newbie", "new code works")
 web.remove_invite("newbie")
 
+# ---- invite persistence and handle linking with invite code
+c = web.generate_invite_code("friend")
+ok(web.INVITES_FILE.exists() and "friend" in pb.read_json(web.INVITES_FILE), "invite saved to disk file")
+web.refresh_invites()
+ok("friend" in web.INVITES and web.INVITE_CODES.get(c) == "friend", "invite and code survive refresh_invites() without Neon")
+st, _, body = ask("/api/invited", {"code": c})
+ok(st == 200 and json.loads(body).get("invited") is True and json.loads(body).get("handle") == "friend", "invite code still valid after refresh")
+
+fake.handle, fake.polls = "friend_actual", 0
+web.started_from.clear()
+st, hdrs, b = ask("/api/sign-in", {"email": "friend@example.com", "password": "pw", "code": c}, address="192.0.2.99")
+pending = set_cookies(hdrs)["remidex_signin"][0]
+for _ in range(5):
+    said = json.loads(ask("/api/sign-in", cookie=f"remidex_signin={pending}")[2])
+    if said.get("error") or said.get("signed_in"):
+        break
+ok(said.get("signed_in") is True and "friend_actual" in web.INVITES and web.INVITE_CODES.get(c) == "friend_actual",
+   "actual RemiliaNET handle linked to invite code and admitted")
+web.remove_invite("friend")
+web.remove_invite("friend_actual")
+
 web.desks.stop_all()
 server.shutdown()
 ok.done()
