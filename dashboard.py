@@ -192,7 +192,7 @@ def person_picture(handle):
 def my_profile(fresh=False):
     """(your handle, your public profile live from RemiliaNET or None). fresh: read it again now (just after a change)."""
     handle = bot.read_json(bot.STATE_FILE).get("handle")
-    if fresh:
+    if fresh and handle:
         with _live_lock:
             _live.pop(handle, None)
     return handle, (live_profile(handle) if handle else None)
@@ -439,9 +439,22 @@ def me_live(fresh=False):
     friends = sorted(bot.read_json(bot.STATE_FILE).get("friends") or [])
     handle, user = my_profile(fresh)
     if user:
-        top = [f for f in user.get("friendsDisplayed") or [] if isinstance(f, dict) and f.get("userHandle")][:5]
-        return {"live": True, "handle": handle, "name": user.get("displayName") or handle, "bio": user.get("bio") or "", "pfp": pic_link(user.get("pfpUrl")) or "/pfp", "friends": friends,
-                "top": [{"handle": f["userHandle"], "name": f.get("displayName") or f["userHandle"], "pfp": pic_link(f.get("pfpUrl")) or f"/viewer/{f['userHandle']}"} for f in top]}
+        top = []
+        for f in user.get("friendsDisplayed") or []:
+            if not isinstance(f, dict):
+                continue
+            h = f.get("handle") or f.get("userHandle") or f.get("username")
+            if isinstance(h, str) and h.strip():
+                h = h.strip().lstrip("~")
+                name = f.get("display_name") or f.get("displayName") or h
+                pic_url = f.get("profile_pic_url") or f.get("pfpUrl") or f.get("pfp")
+                pfp = pic_link(pic_url) or f"/viewer/{h}"
+                top.append({"handle": h, "name": name, "pfp": pfp})
+        top = top[:5]
+        name = user.get("display_name") or user.get("displayName") or handle
+        pfp = pic_link(user.get("profile_pic_url") or user.get("pfpUrl") or user.get("pfp")) or "/pfp"
+        return {"live": True, "handle": handle, "name": name, "bio": user.get("bio") or "", "pfp": pfp, "friends": friends,
+                "top": top}
     saved = bot.read_json(bot.MY_PROFILE_FILE)
     pfp = "/pfp" if (bot.DASH_DIR / "pfp").exists() else ""  # none yet, for someone new, until the bot saves it
     return {"live": False, "handle": handle, "name": saved.get("name") or handle, "bio": saved.get("bio") or "", "pfp": pfp, "fetched_at": saved.get("fetched_at"), "friends": friends,

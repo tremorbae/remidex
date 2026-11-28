@@ -104,11 +104,21 @@ def cache_profile_views(site, state):
     if isinstance(user, dict):  # your own achievements, and which you picked to show on your profile, in that order
         write_json(MY_ACHIEVEMENTS_FILE, {"all": user.get("allAchievements") or [], "shown": [as_dict(a).get("id") for a in user.get("achievementsDisplayed") or []],
                                           "friends": user.get("friendCount"), "fetched_at": time.time()})
-        top = [f for f in user.get("friendsDisplayed") or [] if isinstance(f, dict) and f.get("userHandle")][:5]
-        write_json(MY_PROFILE_FILE, {"bio": user.get("bio") or "", "name": user.get("displayName"), "fetched_at": time.time(),
-                                     "top_friends": [{"handle": f["userHandle"], "name": f.get("displayName")} for f in top]})
+        top = []
+        for f in user.get("friendsDisplayed") or []:
+            if not isinstance(f, dict):
+                continue
+            h = f.get("handle") or f.get("userHandle") or f.get("username")
+            if isinstance(h, str) and h.strip():
+                h = h.strip().lstrip("~")
+                name = f.get("display_name") or f.get("displayName") or h
+                pfp = f.get("profile_pic_url") or f.get("pfpUrl") or f.get("pfp")
+                top.append({"handle": h, "name": name, "pfpUrl": pfp})
+        top = top[:5]
+        write_json(MY_PROFILE_FILE, {"bio": user.get("bio") or "", "name": user.get("display_name") or user.get("displayName"), "fetched_at": time.time(),
+                                     "top_friends": [{"handle": f["handle"], "name": f["name"]} for f in top]})
         for f in top:
-            save_picture(site, f["userHandle"], f.get("pfpUrl"))
+            save_picture(site, f["handle"], f.get("pfpUrl"))
     save_achievement_list()
 
 
@@ -116,7 +126,17 @@ def friends_page(body):
     """One page of someone's friend list, as the site answers it: (their handles, whether there's another page).
     Entries of another shape are skipped."""
     body = as_dict(body)
-    handles = [as_dict(as_dict(f).get("user")).get("userHandle") for f in body.get("friends") or [] if isinstance(f, dict)]
+    global_users = as_dict(as_dict(body.get("global")).get("users"))
+    handles = []
+    for f in body.get("friends") or []:
+        if not isinstance(f, dict):
+            continue
+        u = as_dict(f.get("user"))
+        if not u and global_users:
+            u = as_dict(global_users.get(str(f.get("userId"))))
+        h = u.get("handle") or u.get("userHandle") or u.get("username")
+        if isinstance(h, str) and h.strip():
+            handles.append(h.strip().lstrip("~"))
     return [h for h in handles if isinstance(h, str) and h], bool(as_dict(body.get("pagination")).get("hasMore"))
 
 
@@ -215,9 +235,17 @@ def apply_profile_edit(site, state):
         status, profile = look_up(site, state["handle"]) if state.get("handle") else (0, None)
         user = (profile or {}).get("user") if status == 200 else None
         if isinstance(user, dict):
-            payload = {"pfp": user.get("pfp"), "bio": user.get("bio"), "displayName": user.get("displayName"), "userHandle": user.get("username"),
+            existing_friends = []
+            for f in user.get("friendsDisplayed") or []:
+                if isinstance(f, dict):
+                    fh = f.get("userHandle") or f.get("handle") or f.get("username")
+                    if fh:
+                        existing_friends.append(fh)
+                elif isinstance(f, str) and f:
+                    existing_friends.append(f)
+            payload = {"pfp": user.get("pfp"), "bio": user.get("bio"), "displayName": user.get("displayName") or user.get("display_name"), "userHandle": user.get("username") or user.get("userHandle") or user.get("handle"),
                        "achievementsDisplayed": [as_dict(a).get("id") for a in user.get("achievementsDisplayed") or []],
-                       "friendsDisplayed": [as_dict(f).get("userHandle") for f in user.get("friendsDisplayed") or []], "location": user.get("location")}
+                       "friendsDisplayed": existing_friends, "location": user.get("location")}
             payload.update({k: edit[k] for k in ("displayName", "bio", "friendsDisplayed", "achievementsDisplayed") if k in edit})
             status, body = site.signed_api("POST", "/api/profile/updateProfile", payload)
         else:
