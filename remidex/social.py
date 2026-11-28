@@ -5,6 +5,7 @@ import json
 import random
 import socket
 import sqlite3
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -398,8 +399,10 @@ def ask_next(site, state, others_due, counts):
 def feed_handles(event):
     """Everyone an activity-feed event mentions (from/to on pokes, users on friendships, user on joins, ...)."""
     if isinstance(event, dict):
-        if isinstance(event.get("userHandle"), str):
-            yield event["userHandle"]
+        for key in ("userHandle", "handle", "username"):
+            val = event.get(key)
+            if isinstance(val, str) and val.strip():
+                yield val.strip().lstrip("~").lower()
         for value in event.values():
             yield from feed_handles(value)
     elif isinstance(event, list):
@@ -458,26 +461,50 @@ def share_feed(events, now, recent):
     except sqlite3.Error as e:
         log(f"History: couldn't note who the feed showed ({e}).")
     for handle, path in news_files().items():
-        theirs = [e for e in events if isinstance(e, dict) and handle in set(feed_handles(e)) and as_dict(e.get("from")).get("userHandle") != handle]
+        theirs = []
+        for e in events:
+            if not isinstance(e, dict):
+                continue
+            if handle not in set(feed_handles(e)):
+                continue
+            sender = as_dict(e.get("from"))
+            sender_h = str(sender.get("userHandle") or sender.get("handle") or sender.get("username") or "").strip().lstrip("~").lower()
+            if sender_h != handle:
+                theirs.append(e)
         if theirs:
             with editing(path):
                 news = (read_json(path).get("events") or []) + [{**e, "seen_at": now} for e in theirs]
                 write_json(path, {"events": news[-40:], "at": now})
 
 
+_feed_lock = threading.Lock()
+_feed_running = False
+
+
 def watch_feed():
     """Runs forever: notes what the public activity feed shows (see share_feed). On the website, one watches for everyone.
 
     Sightings older than a day are dropped (see store.FEED_KEEP)."""
+    global _feed_running
+    with _feed_lock:
+        if _feed_running:
+            return
+        _feed_running = True
     drops = 0  # disconnects since the feed last connected
     recent = collections.deque(maxlen=FEED_SHOWN)  # the newest events, for the dashboard's RemiliaNET Activity
+    try:
+        existing = read_json(REMILIA_FEED_FILE).get("events") or []
+        if isinstance(existing, list):
+            recent.extend(e for e in existing if isinstance(e, dict))
+    except Exception:
+        pass
     while True:
         try:
             request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT, "Accept": "text/event-stream"})
             with urllib.request.urlopen(request, timeout=FEED_IDLE_TIMEOUT) as stream:
                 drops = 0
                 for raw in stream:
-                    line = raw.decode("utf-8", "replace")
+                    line = raw.decode("utf-8", "replace").strip()
                     if not line.startswith("data:"):
                         continue
                     try:

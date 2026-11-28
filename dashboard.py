@@ -31,7 +31,7 @@ ThreadingHTTPServer.request_queue_size = 128
 import poke_browser as bot
 import quests
 import store
-from remidex import browser, says
+from remidex import browser, says, social
 
 HOST, PORT = "127.0.0.1", int(os.environ.get("REMIDEX_PORT") or 8642)  # (each person's dashboard has a port of its own)
 NAMES = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}  # what the dashboard answers to: this server, as the website asks it
@@ -311,25 +311,70 @@ def mention_search(typed):
             found = json.load(r).get("result")
     except (OSError, ValueError, AttributeError):
         return []
-    people = [{"handle": u["userHandle"], "name": u.get("displayName") or u["userHandle"], "pic": pic_link(u.get("pfpUrl"))}
-              for u in listed(found) if isinstance(u, dict) and isinstance(u.get("userHandle"), str)][:6]
+    people = []
+    for u in listed(found):
+        if not isinstance(u, dict):
+            continue
+        h = u.get("handle") or u.get("userHandle") or u.get("username")
+        if isinstance(h, str) and h.strip():
+            h = h.strip().lstrip("~")
+            name = u.get("display_name") or u.get("displayName") or h
+            pic = pic_link(u.get("profile_pic_url") or u.get("pfpUrl") or u.get("pfp"))
+            people.append({"handle": h, "name": name, "pic": pic})
+            if len(people) >= 6:
+                break
     if len(_mentions) > 300:
         _mentions.clear()
     _mentions[typed.lower()] = (time.time(), people)
     return people
 
 
+_feed_started = False
+_feed_start_lock = threading.Lock()
+
+
+def ensure_feed_watcher():
+    """Ensure the background activity feed watcher is running."""
+    global _feed_started
+    with _feed_start_lock:
+        if not _feed_started:
+            _feed_started = True
+            threading.Thread(target=social.watch_feed, daemon=True).start()
+
+
 def remilia_activity():
     """RemiliaNET's activity feed, as the feed watcher last saved it (while the dashboard is open): the newest events,
     oldest first, with everyone in them and their pictures."""
+    ensure_feed_watcher()
     shown = []
     for e in listed(bot.read_json(bot.REMILIA_FEED_FILE).get("events")):
         e = bot.as_dict(e)
-        people = [bot.as_dict(e.get("from")), bot.as_dict(e.get("to")), *map(bot.as_dict, listed(e.get("users"))), bot.as_dict(e.get("user"))]
-        people = [{"handle": p["userHandle"], "name": p.get("displayName") or p["userHandle"], "pic": pic_link(p.get("pfpUrl"))}
-                  for p in people if isinstance(p.get("userHandle"), str)]
+        raw_people = [bot.as_dict(e.get("from")), bot.as_dict(e.get("to")), *map(bot.as_dict, listed(e.get("users"))), bot.as_dict(e.get("user"))]
+        people = []
+        for p in raw_people:
+            h = p.get("handle") or p.get("userHandle") or p.get("username")
+            if isinstance(h, str) and h.strip():
+                h = h.strip().lstrip("~")
+                name = p.get("display_name") or p.get("displayName") or h
+                pic = pic_link(p.get("profile_pic_url") or p.get("pfpUrl") or p.get("pfp"))
+                people.append({"handle": h, "name": name, "pic": pic})
         if people and isinstance(e.get("type"), str):
-            shown.append({"at": e.get("seen_at") if isinstance(e.get("seen_at"), (int, float)) else 0, "type": e["type"], "people": people})
+            at = e.get("seen_at")
+            if not isinstance(at, (int, float)):
+                ts = e.get("timestamp")
+                if isinstance(ts, str):
+                    try:
+                        clean_ts = ts.rstrip("Z")
+                        if "." in clean_ts:
+                            pfx, frac = clean_ts.split(".", 1)
+                            clean_ts = f"{pfx}.{(frac + '000000')[:6]}"
+                        import datetime
+                        at = datetime.datetime.fromisoformat(clean_ts).replace(tzinfo=datetime.timezone.utc).timestamp()
+                    except Exception:
+                        at = 0
+                else:
+                    at = 0
+            shown.append({"at": at, "type": e["type"], "people": people})
     return {"events": shown}
 
 
@@ -1023,11 +1068,14 @@ def with_live_pokes(social, pics):
     extra = []
     for e in bot.read_json(bot.FEED_US_FILE).get("events") or []:
         who, at = e.get("from") or {}, e.get("seen_at") or 0
-        handle = who.get("userHandle")
+        handle = who.get("handle") or who.get("userHandle") or who.get("username")
+        if isinstance(handle, str):
+            handle = handle.strip().lstrip("~")
         if e.get("type") != "poke" or not handle or now - at > 1800 or have.get(handle, 0) >= at - 60:
             continue
         have[handle] = at
-        extra.append({"id": f"feed-{e.get('id')}", "type": "poke", "handle": handle, "name": who.get("displayName") or handle, "count": 1, "at": at, "state": "unread",
+        name = who.get("display_name") or who.get("displayName") or handle
+        extra.append({"id": f"feed-{e.get('id')}", "type": "poke", "handle": handle, "name": name, "count": 1, "at": at, "state": "unread",
                       "mutual": None, "pic": handle in pics})
     return social + extra
 

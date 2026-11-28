@@ -12,6 +12,7 @@ import support
 web = support.load_site()
 ok = support.Checks()
 import poke_browser as pb  # noqa: E402
+import dashboard  # noqa: E402
 from remidex import loop, recipes, social  # noqa: E402
 
 DATA = web.DATA
@@ -223,6 +224,10 @@ event = {"type": "poke", "from": {"userHandle": "someone"}, "to": {"userHandle":
 social.share_feed([event, {"type": "join", "user": {"userHandle": "third"}}], time.time(), social.collections.deque(maxlen=5))
 ok(len(pb.read_json(home / "feed_us.json").get("events") or []) == 1 and not (web.USERS_DIR / "other_one" / "feed_us.json").exists(), "news about you goes to you only")
 ok(len(pb.read_json(web.SHARED_DIR / "remilia_activity.json")["events"]) == 2, "and what RemiliaNET's feed shows is shared")
+event_live = {"type": "poke", "from": {"handle": "marblecake", "display_name": "MarbleCake", "profile_pic_url": "/imgproxy/x"}, "to": {"handle": "tester"}}
+social.share_feed([event_live], time.time(), social.collections.deque(maxlen=5))
+feed_acts = dashboard.remilia_activity()["events"]
+ok(len(feed_acts) > 0 and any(a["people"][0]["handle"] == "marblecake" for a in feed_acts), "RemiliaNET activity feed parses handle, display_name and profile_pic_url")
 ok(loop.round_wanted(home) is True and not loop.round_wanted(web.USERS_DIR / "other_one"), "news about you: your bot wants a round")
 
 # ---- signing out (the dashboard's Sign out button); there's no deleting your RemiDex from the website

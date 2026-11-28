@@ -2953,8 +2953,11 @@ function placeRows(box, rows) {  // [[key, sig, make]]: a row that hasn't change
 function siteRow(e) {
   const [a, b] = e.people, who = p => [rpic(p.pic, true), whoLink(p.handle)];
   const what = e.type === "poke" && b ? [...who(a), " poked ", ...who(b)]
-    : e.type === "friendship" && b ? [...who(a), " and ", ...who(b), " became friends"]
-    : [...who(a), " ", e.type.replace(/_/g, " ")];
+    : (e.type === "friendship" || e.type === "friend") && b ? [...who(a), " and ", ...who(b), " became friends"]
+    : e.type === "ballDateFormed" && b ? [...who(a), " and ", ...who(b), " formed a ball date"]
+    : e.type === "ballDateFormed" ? [...who(a), " formed a ball date"]
+    : e.type === "join" ? [...who(a), " joined RemiliaNET"]
+    : [...who(a), " ", e.type.replace(/([A-Z])/g, " $1").toLowerCase().replace(/_/g, " ")];
   return el("div", {className: "act"}, el("time", {textContent: when(e.at), title: new Date(e.at * 1000).toLocaleString()}), el("span", {}, ...what));
 }
 function renderRemilia(d) {
@@ -2969,8 +2972,8 @@ function renderRemilia(d) {
       ...(!d.messages.length ? note("The global chat shows up here a few seconds after this page opens: the bot reads it with your sign-in.")
         : d.stale ? note(`As of ${d.at ? when(d.at) : "earlier"}. The bot reads the chat every few seconds while this page is open and it's signed in.`) : [])]);
   } else {
-    placeRows(box, [...d.events.map(e => { const key = JSON.stringify(e); return [key, key, () => siteRow(e)]; }),
-      ...(!d.events.length ? note("RemiliaNET's activity shows up here as it happens.") : [])]);
+    placeRows(box, [...(d.events || []).map(e => { const key = JSON.stringify(e); return [key, key, () => siteRow(e)]; }),
+      ...(!d.events?.length ? note("RemiliaNET's activity shows up here as it happens.") : [])]);
   }
   stickDown();
   if (reactorAnchor && !reactorAnchor.isConnected) hideReactors();  // (that message was drawn again)
